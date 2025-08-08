@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>วงล้อสุ่ม (ออฟไลน์)</title>
+<style>
+  :root { --accent: #1a73e8; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 16px;
+    background: #f6f7f9;
+    color: #111;
+  }
+  h1 { margin: 0 0 12px; font-size: 22px; }
+  .card {
+    max-width: 720px;
+    margin: 0 auto 16px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    padding: 16px;
+  }
+  #wheelWrap {
+    display: grid;
+    place-items: center;
+    padding: 8px;
+  }
+  #canvas {
+    width: 100%;
+    max-width: 520px;
+    height: auto;
+    touch-action: manipulation;
+  }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  button {
+    border: none;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+  }
+  button.secondary { background: #e0e3e7; color: #111; }
+  #result {
+    font-weight: 700;
+    margin-top: 8px;
+    font-size: 18px;
+  }
+  details { margin-top: 8px; }
+  textarea {
+    width: 100%;
+    min-height: 110px;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  .help {
+    font-size: 12px; color: #555; margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>วงล้อสุ่ม (ออฟไลน์ ใช้บน iPad/มือถือได้)</h1>
+    <div id="wheelWrap">
+      <canvas id="canvas" width="520" height="520"></canvas>
+    </div>
+    <div class="controls">
+      <button id="spinBtn">หมุนวงล้อ</button>
+      <button id="resetBtn" class="secondary">รีเซ็ตองศา</button>
+      <button id="saveBtn" class="secondary">บันทึกตัวเลือก</button>
+    </div>
+    <div id="result"></div>
+    <details>
+      <summary>แก้ไขรายการในวงล้อ</summary>
+      <div class="help">พิมพ์ 1 รายการต่อบรรทัด (อย่างน้อย 2 รายการ). ระบบจะจำรายการที่แก้ไขไว้ในเครื่อง (localStorage) โดยอัตโนมัติและใช้ได้ออฟไลน์</div>
+      <textarea id="itemsBox">รางวัล 1
+รางวัล 2
+รางวัล 3
+รางวัล 4
+รางวัล 5
+รางวัล 6</textarea>
+    </details>
+  </div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let startAngle = 0; // radians
+  let spinTimer = null;
+  let options = [];
+  const colorPalette = ["#f94144","#f3722c","#f8961e","#f9c74f","#90be6d","#43aa8b","#577590","#277da1"];
+
+  // Load items from localStorage or textarea
+  const itemsBox = document.getElementById('itemsBox');
+  const saved = localStorage.getItem('wheel_items_v1');
+  if (saved) itemsBox.value = saved;
+  function getOptionsFromTextarea(){
+    const list = itemsBox.value.split(/[\r\n]+/).map(s=>s.trim()).filter(Boolean);
+    // Ensure at least two
+    return list.length >= 2 ? list : ["ตัวเลือก A", "ตัวเลือก B"];
+  }
+  options = getOptionsFromTextarea();
+
+  function resizeCanvas(){
+    const size = Math.min(520, Math.floor(window.innerWidth - 48)); // padding margins
+    const px = Math.max(260, size); // keep readable
+    canvas.width = px;
+    canvas.height = px;
+    draw();
+  }
+
+  function draw(){
+    const W = canvas.width, H = canvas.height;
+    const cx = W/2, cy = H/2;
+    const outer = Math.min(W,H)/2 - 8;
+    const inner = outer*0.18;
+    const textR = outer*0.72;
+    const arc = (Math.PI * 2) / options.length;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(startAngle);
+
+    for (let i=0;i<options.length;i++){
+      const a0 = i*arc, a1 = a0 + arc;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,outer,a0,a1,false);
+      ctx.closePath();
+      ctx.fillStyle = colorPalette[i % colorPalette.length];
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(2, outer*0.01);
+      ctx.stroke();
+
+      // Text
+      ctx.save();
+      const mid = a0 + arc/2;
+      ctx.rotate(mid);
+      ctx.translate(textR, 0);
+      ctx.rotate(Math.PI/2);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = Math.max(14, Math.floor(outer*0.10)) + "px system-ui, -apple-system, Arial";
+      const text = options[i];
+      const maxWidth = outer*0.9;
+      drawFitText(ctx, text, maxWidth);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Pointer
+    ctx.beginPath();
+    const pH = outer*0.14;
+    ctx.moveTo(cx - pH*0.35, cy - outer - pH*0.55);
+    ctx.lineTo(cx + pH*0.35, cy - outer - pH*0.55);
+    ctx.lineTo(cx,            cy - outer + pH*0.10);
+    ctx.closePath();
+    ctx.fillStyle = "#111";
+    ctx.fill();
+
+    // Center hub
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner, 0, Math.PI*2);
+    ctx.fillStyle = "#111";
+    ctx.fill();
+  }
+
+  function drawFitText(context, text, maxWidth){
+    // Clip extremely long text
+    let t = text;
+    if (t.length > 28) t = t.slice(0,27) + "…";
+    const metrics = context.measureText(t);
+    const width = metrics.width;
+    if (width <= maxWidth) {
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(t, 0, 0);
+      return;
+    }
+    // scale down if needed
+    const scale = maxWidth / width;
+    context.save();
+    context.scale(scale, 1);
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(t, 0, 0);
+    context.restore();
+  }
+
+  function spin(){
+    if (spinTimer) return;
+    const duration = 4000 + Math.random()*2000; // 4–6s
+    const maxSpeed = (10 + Math.random()*10) * Math.PI/180; // rad/step
+    const start = performance.now();
+
+    function step(now){
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      // easeOutCubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      const speed = maxSpeed * (1 - ease);
+      startAngle += speed * 6; // faster base spin
+      draw();
+      if (t < 1) {
+        spinTimer = requestAnimationFrame(step);
+      } else {
+        spinTimer = null;
+        showResult();
+      }
+    }
+    spinTimer = requestAnimationFrame(step);
+  }
+
+  function showResult(){
+    // normalize angle where pointer is at -90deg from canvas +Y
+    const arc = (Math.PI * 2) / options.length;
+    let deg = (startAngle * 180/Math.PI + 90) % 360;
+    if (deg < 0) deg += 360;
+    const idx = Math.floor((360 - deg) / (arc*180/Math.PI)) % options.length;
+    const choice = options[idx];
+    document.getElementById('result').textContent = "ผลลัพธ์: " + choice;
+  }
+
+  function saveItems(){
+    const text = itemsBox.value;
+    localStorage.setItem('wheel_items_v1', text);
+    options = getOptionsFromTextarea();
+    draw();
+    alert("บันทึกตัวเลือกแล้ว");
+  }
+
+  function resetAngle(){
+    startAngle = 0;
+    draw();
+  }
+
+  document.getElementById('spinBtn').addEventListener('click', spin);
+  document.getElementById('saveBtn').addEventListener('click', saveItems);
+  document.getElementById('resetBtn').addEventListener('click', resetAngle);
+  window.addEventListener('resize', resizeCanvas, { passive: true });
+
+  // First paint
+  resizeCanvas();
+})();
+</script>
+</body>
+</html>
