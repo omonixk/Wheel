@@ -6,10 +6,12 @@
 <title>Budget Pro – บัญชีรายรับรายจ่าย</title>
 <style>
   :root{
-    --bg:#0b0d10; --panel:#11151a; --muted:#7d8b99; --text:#e9eef5; --accent:#4aa3ff; --accent-2:#7bde8a; --danger:#ff6b6b; --warn:#ffb020; --ok:#42d392; --border:#1c232b;
+    --bg:#0b0d10; --panel:#11151a; --muted:#8b98a5; --text:#e9eef5; --accent:#4a8bff; --accent-2:#7bde8a; --danger:#ff6b6b; --warn:#ffb020; --ok:#42d392; --border:#1c232b;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
   }
   .light{
     --bg:#f6f8fb; --panel:#ffffff; --muted:#5a6672; --text:#0f1720; --accent:#1967d2; --accent-2:#2ea36a; --danger:#c53b3b; --warn:#b8860b; --ok:#1b8e5a; --border:#e7eef5;
+    --shadow:0 10px 30px rgba(16,24,40,.12);
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,Segoe UI,Inter,Roboto,"Helvetica Neue",Arial}
@@ -19,7 +21,8 @@
   .grow{flex:1}
   button,select,input,textarea{color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   select,input[type="date"]{padding:9px 10px}
-  button{cursor:pointer}
+  button{cursor:pointer;transition:.15s transform}
+  button:active{transform:translateY(1px)}
   .accent{background:var(--accent);border-color:transparent;color:#fff}
   .danger{background:var(--danger);border-color:transparent;color:#fff}
   .muted{color:var(--muted)}
@@ -30,7 +33,7 @@
   .grid{display:grid;gap:16px}
   @media(min-width:920px){.grid.cols-3{grid-template-columns:2fr 1fr 1fr}}
   @media(min-width:920px){.grid.cols-2{grid-template-columns:1.2fr 1fr}}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
   .card h3{margin:0 0 10px 0;font-size:16px}
   .row{display:flex;gap:10px;flex-wrap:wrap}
   .row > *{flex:1}
@@ -50,20 +53,24 @@
   .stack{display:flex;flex-direction:column;gap:8px}
   .hidden{display:none}
 
-  /* Auth overlay */
-  .auth-backdrop{
-    position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);
-    display:flex;align-items:center;justify-content:center;z-index:20;
-  }
-  .auth-card{
-    width:min(520px,92vw);background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px 18px;
-    box-shadow:0 8px 30px rgba(0,0,0,.35)
-  }
-  .auth-tabs{display:flex;gap:8px;margin-bottom:10px}
-  .auth-tabs .t{flex:1;text-align:center;padding:10px;border-radius:12px;border:1px solid var(--border);cursor:pointer}
-  .auth-tabs .t.active{background:var(--accent);color:#fff;border-color:transparent}
-  .auth-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  /* ---------- Auth overlay (ปรับดีไซน์) ---------- */
+  .auth-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:20}
+  .auth-card{width:min(520px,92vw);background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:var(--shadow)}
+  .auth-head{display:flex;gap:8px;margin-bottom:12px}
+  .auth-tab{flex:1;text-align:center;padding:12px;border-radius:12px;border:1px solid var(--border);cursor:pointer;font-weight:600}
+  .auth-tab.active{background:var(--accent);color:#fff;border-color:transparent}
+  .auth-group{display:flex;flex-direction:column;gap:8px}
+  .auth-actions{display:flex;gap:8px;margin-top:6px}
   .user-chip{border-radius:999px;border:1px solid var(--border);padding:6px 10px}
+  .helper{font-size:12px;color:var(--muted);margin-top:6px}
+  .known{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);padding:10px 14px;border-radius:12px;box-shadow:var(--shadow);z-index:50}
+  .err{color:var(--danger)}
+  .ok{color:var(--ok)}
+  .btn-ghost{background:transparent;border:1px dashed var(--border)}
+  .inline{display:inline-flex;align-items:center;gap:6px}
+  .small{font-size:12px}
+  .busy{opacity:.7;pointer-events:none}
 </style>
 </head>
 <body class="light" id="body">
@@ -71,28 +78,22 @@
   <!-- AUTH OVERLAY -->
   <div id="auth" class="auth-backdrop hidden">
     <div class="auth-card">
-      <div class="auth-tabs">
-        <div class="t active" data-mode="login">ล็อกอิน</div>
-        <div class="t" data-mode="signup">สมัครสมาชิก</div>
+      <div class="auth-head">
+        <div class="auth-tab active" data-mode="login">ล็อกอิน</div>
+        <div class="auth-tab" data-mode="signup">สมัครสมาชิก</div>
       </div>
-      <div id="authForm">
-        <div class="auth-row">
-          <input id="authUser" placeholder="ชื่อผู้ใช้ (a-z0-9_)" autocomplete="username">
+      <div class="auth-group">
+        <input id="authUser" placeholder="ชื่อผู้ใช้ (a-z0-9_)" autocomplete="username">
+        <input id="authPass" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" autocomplete="current-password">
+        <div class="auth-actions">
+          <button id="authSubmit" class="accent" style="flex:1">เข้าสู่ระบบ</button>
+          <button id="authGuest" class="btn-ghost" style="flex:1">เข้าสู่ระบบแบบ Guest</button>
         </div>
-        <div class="auth-row">
-          <input id="authPass" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" autocomplete="current-password">
-        </div>
-        <div class="auth-row">
-          <button id="authSubmit" class="accent">เข้าสู่ระบบ</button>
-          <button id="authGuest">เข้าสู่ระบบแบบ Guest</button>
-        </div>
-        <div id="authMsg" class="note" style="margin-top:8px"></div>
-        <div class="note" style="margin-top:8px">
-          ข้อมูลถูกเก็บในอุปกรณ์นี้เท่านั้น (localStorage) • หากลืมรหัสผ่าน ให้ลบผู้ใช้ออกจากรายการและสมัครใหม่
-        </div>
-        <div style="margin-top:12px">
-          <h4 style="margin:0 0 8px 0">ผู้ใช้ที่เคยล็อกอิน</h4>
-          <div id="knownUsers" class="row"></div>
+        <div id="authMsg" class="helper"></div>
+        <div class="helper">ข้อมูลถูกเก็บในอุปกรณ์นี้เท่านั้น (localStorage)</div>
+        <div style="margin-top:6px">
+          <div class="small muted">ผู้ใช้ที่เคยล็อกอิน</div>
+          <div id="knownUsers" class="known"></div>
         </div>
       </div>
     </div>
@@ -238,79 +239,74 @@
   </main>
 
 <script>
-/* ====================== AUTH & USERS ====================== */
+/* -------------------- Helpers -------------------- */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const fmt = n => (n||0).toLocaleString('th-TH',{minimumFractionDigits:0});
+const todayStr = () => new Date().toISOString().slice(0,10);
+const ym = d => d.slice(0,7);
+const byMonth = (list, month) => list.filter(t => ym(t.date)===month);
+const sum = arr => arr.reduce((a,b)=>a+b,0);
+const clamp = (x,min,max)=>Math.max(min,Math.min(max,x));
+function toast(text, cls='ok'){ const t=document.createElement('div'); t.className='toast '+cls; t.textContent=text; document.body.appendChild(t); setTimeout(()=>t.remove(),1800); }
+
+/* -------------------- Auth Store -------------------- */
 const GLOBAL = {
-  usersKey: 'bp_users',       // รายชื่อผู้ใช้ + salt + hash
-  sessionKey: 'bp_session',   // ผู้ใช้ที่ล็อกอินปัจจุบัน
-  legacyKeys: {               // คีย์เก่าแบบไม่แยกผู้ใช้ (เพื่อ migration)
-    tx:'bp_transactions', cats:'bp_categories', goals:'bp_goals', settings:'bp_settings'
-  }
+  usersKey: 'bp_users',
+  sessionKey: 'bp_session',
+  legacyKeys: { tx:'bp_transactions', cats:'bp_categories', goals:'bp_goals', settings:'bp_settings' }
 };
-function loadJSON(key, def){ try{ return JSON.parse(localStorage.getItem(key)) ?? def }catch{ return def } }
-function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
-function b64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
-async function sha256(str){ const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return b64(buf); }
-function randomSalt(len=16){ const a=new Uint8Array(len); crypto.getRandomValues(a); return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join(''); }
-
-function getUsers(){ return loadJSON(GLOBAL.usersKey, {}); }
-function setUsers(obj){ saveJSON(GLOBAL.usersKey, obj); }
-
-function userKeys(username){
-  // คีย์ข้อมูลสำหรับผู้ใช้แต่ละคน
-  return {
-    tx: `bp:${username}:transactions`,
-    cats:`bp:${username}:categories`,
-    goals:`bp:${username}:goals`,
-    settings:`bp:${username}:settings`
-  };
+const loadJSON = (k,d)=>{ try{return JSON.parse(localStorage.getItem(k)) ?? d}catch{return d} };
+const saveJSON = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+const b64 = (buf)=> btoa(String.fromCharCode(...new Uint8Array(buf)));
+async function sha256(str){
+  if(window.crypto?.subtle){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return b64(buf);
+  } else {
+    // fallback (ไม่ปลอดภัยเท่า แต่กันปุ่มเงียบบนบางบราวเซอร์เก่า)
+    let h=0; for(let i=0;i<str.length;i++){ h=(h<<5)-h+str.charCodeAt(i); h|=0; }
+    return String(h);
+  }
 }
+function randomSalt(len=16){ const a=new Uint8Array(len); (crypto.getRandomValues||((b)=>{for(let i=0;i<b.length;i++)b[i]=Math.random()*256|0;}))(a); return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+const getUsers = ()=> loadJSON(GLOBAL.usersKey, {});
+const setUsers = (obj)=> saveJSON(GLOBAL.usersKey, obj);
+const userKeys = (u)=>({ tx:`bp:${u}:transactions`, cats:`bp:${u}:categories`, goals:`bp:${u}:goals`, settings:`bp:${u}:settings` });
 
+/* -------------------- Auth Logic -------------------- */
 async function signUp(username, password){
   const users = getUsers();
   if(users[username]) throw new Error('มีผู้ใช้นี้อยู่แล้ว');
-  if(!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error('รูปแบบชื่อผู้ใช้ไม่ถูกต้อง');
-  if((password||'').length<6) throw new Error('รหัสผ่านสั้นเกินไป');
+  if(!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error('ชื่อผู้ใช้ต้องเป็น a-z, 0-9, _ (3–20 ตัว)');
+  if((password||'').length<6) throw new Error('รหัสผ่านอย่างน้อย 6 ตัว');
   const salt = randomSalt();
   const hash = await sha256(password+salt);
   users[username] = { salt, hash, createdAt: Date.now() };
   setUsers(users);
   saveJSON(GLOBAL.sessionKey, { username, at: Date.now() });
+  return true;
 }
-
 async function login(username, password){
-  const users = getUsers();
-  const u = users[username];
+  const u = getUsers()[username];
   if(!u) throw new Error('ไม่พบบัญชีนี้');
   const hash = await sha256(password+u.salt);
   if(hash !== u.hash) throw new Error('รหัสผ่านไม่ถูกต้อง');
   saveJSON(GLOBAL.sessionKey, { username, at: Date.now() });
+  return true;
 }
+function logout(){ localStorage.removeItem(GLOBAL.sessionKey); location.reload(); }
+function sessionUser(){ return loadJSON(GLOBAL.sessionKey, null)?.username || null; }
 
-function logout(){
-  localStorage.removeItem(GLOBAL.sessionKey);
-  location.reload();
-}
-
-function sessionUser(){
-  const s = loadJSON(GLOBAL.sessionKey, null);
-  return s?.username || null;
-}
-
-/* ====================== APP STATE (PER USER) ====================== */
+/* -------------------- Per-User State -------------------- */
 const DefaultCategories = [
-  {name:'อาหาร', budget:4000},
-  {name:'เดินทาง', budget:1500},
-  {name:'บิลรายเดือน', budget:3000},
-  {name:'บันเทิง', budget:1000},
-  {name:'อื่นๆ', budget:0}
+  {name:'อาหาร', budget:4000},{name:'เดินทาง', budget:1500},{name:'บิลรายเดือน', budget:3000},{name:'บันเทิง', budget:1000},{name:'อื่นๆ', budget:0}
 ];
-
 let CURRENT_USER = sessionUser();
 let LS = CURRENT_USER ? userKeys(CURRENT_USER) : userKeys('guest');
 let state = null;
 
 function initUserState(){
-  // โหลดสถานะของผู้ใช้ปัจจุบัน
   const cats = loadJSON(LS.cats, null);
   state = {
     transactions: loadJSON(LS.tx, []),
@@ -318,521 +314,201 @@ function initUserState(){
     goals: loadJSON(LS.goals, []),
     settings: loadJSON(LS.settings, {theme:'light'})
   };
-  if(!cats){ saveAll(); } // เขียน default categories ครั้งแรก
+  if(!cats) saveAll();
 }
-function saveAll(){
-  saveJSON(LS.tx, state.transactions);
-  saveJSON(LS.cats, state.categories);
-  saveJSON(LS.goals, state.goals);
-  saveJSON(LS.settings, state.settings);
-}
-function swapUser(username){
-  CURRENT_USER = username;
-  LS = userKeys(username);
-  initUserState();
-  // UI
-  document.getElementById('currentUser').textContent = '@'+username;
-  document.getElementById('currentUser').classList.remove('hidden');
-  document.getElementById('logout').classList.remove('hidden');
-  // Theme
-  const body = document.getElementById('body');
-  if(state.settings.theme==='dark') body.classList.remove('light'); else body.classList.add('light');
-  renderAll();
-  // แสดงการย้ายข้อมูลเก่าถ้ามี
-  checkLegacy();
+function saveAll(){ saveJSON(LS.tx,state.transactions); saveJSON(LS.cats,state.categories); saveJSON(LS.goals,state.goals); saveJSON(LS.settings,state.settings); }
+function swapUser(u){
+  CURRENT_USER=u; LS=userKeys(u); initUserState();
+  $('#currentUser').textContent='@'+u; $('#currentUser').classList.remove('hidden'); $('#logout').classList.remove('hidden');
+  const body = document.getElementById('body'); if(state.settings.theme==='dark') body.classList.remove('light'); else body.classList.add('light');
+  renderAll(); checkLegacy();
 }
 
-/* ====================== AUTH UI HANDLERS ====================== */
-const authEl = document.getElementById('auth');
-const authTabs = Array.from(document.querySelectorAll('.auth-tabs .t'));
-let authMode = 'login';
-authTabs.forEach(t=>{
-  t.onclick = ()=>{
-    authTabs.forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    authMode = t.dataset.mode;
-    document.getElementById('authSubmit').textContent = (authMode==='login')?'เข้าสู่ระบบ':'สมัครสมาชิก';
-    document.getElementById('authMsg').textContent='';
-  };
+/* -------------------- Auth UI -------------------- */
+const authEl = $('#auth'); const authMsg = $('#authMsg'); const authUser = $('#authUser'); const authPass = $('#authPass'); const authSubmit = $('#authSubmit');
+let authMode='login';
+function setBusy(b){ [authSubmit,$('#authGuest')].forEach(x=>x.classList.toggle('busy',b)); }
+$$('.auth-tab').forEach(t=>{
+  t.onclick = ()=>{ $$('.auth-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); authMode=t.dataset.mode; authSubmit.textContent=authMode==='login'?'เข้าสู่ระบบ':'สมัครสมาชิก'; authMsg.textContent=''; };
 });
-document.getElementById('authGuest').onclick = ()=>{
-  // Guest: ชื่อผู้ใช้ guest_* ชั่วคราว
-  const u = 'guest';
-  saveJSON(GLOBAL.sessionKey, { username:u, at: Date.now(), guest:true });
-  authEl.classList.add('hidden');
-  swapUser(u);
-};
-document.getElementById('authSubmit').onclick = async ()=>{
-  const user = document.getElementById('authUser').value.trim();
-  const pass = document.getElementById('authPass').value;
-  const msg = document.getElementById('authMsg');
+$('#authGuest').onclick = ()=>{ saveJSON(GLOBAL.sessionKey,{username:'guest',at:Date.now(),guest:true}); authEl.classList.add('hidden'); swapUser('guest'); toast('เข้าสู่ระบบแบบ Guest', 'ok'); };
+authSubmit.onclick = async ()=>{
+  authMsg.textContent=''; setBusy(true);
   try{
-    if(authMode==='signup') await signUp(user, pass);
-    else await login(user, pass);
-    authEl.classList.add('hidden');
-    swapUser(user);
-  }catch(e){
-    msg.textContent = e.message || 'เกิดข้อผิดพลาด';
-  }
+    const u = authUser.value.trim(), p = authPass.value;
+    if(authMode==='signup'){ await signUp(u,p); refreshKnownUsers(); toast('สมัครสมาชิกสำเร็จ', 'ok'); }
+    else { await login(u,p); toast('เข้าสู่ระบบสำเร็จ', 'ok'); }
+    authEl.classList.add('hidden'); swapUser(u);
+  }catch(e){ authMsg.innerHTML = `<span class="err">• ${e.message||'เกิดข้อผิดพลาด'}</span>`; }
+  finally{ setBusy(false); }
 };
-
-document.getElementById('logout').onclick = logout;
-
 function refreshKnownUsers(){
-  const wrap = document.getElementById('knownUsers'); wrap.innerHTML='';
+  const wrap = $('#knownUsers'); wrap.innerHTML='';
   const users = getUsers();
   Object.keys(users).forEach(u=>{
-    const b = document.createElement('button');
-    b.className='pill'; b.textContent='@'+u;
-    b.onclick = ()=>{
-      document.getElementById('authUser').value=u;
-      document.getElementById('authPass').focus();
-    };
+    const b=document.createElement('button'); b.className='pill small'; b.textContent='@'+u;
+    b.onclick = ()=>{ authUser.value=u; authPass.focus(); };
     wrap.appendChild(b);
   });
 }
 
-/* ====================== LEGACY MIGRATION ====================== */
-function hasLegacyData(){
-  const k = GLOBAL.legacyKeys;
-  return localStorage.getItem(k.tx) || localStorage.getItem(k.cats) || localStorage.getItem(k.goals);
-}
-function checkLegacy(){
-  const card = document.getElementById('legacyImportCard');
-  if(hasLegacyData()) card.classList.remove('hidden'); else card.classList.add('hidden');
-}
-document.getElementById('migrateLegacy')?.addEventListener('click', ()=>{
-  const K = GLOBAL.legacyKeys;
-  const tx = loadJSON(K.tx, []);
-  const cats = loadJSON(K.cats, null);
-  const goals = loadJSON(K.goals, []);
-  const settings = loadJSON(K.settings, null);
-  if(tx.length || cats || goals.length || settings){
-    if(!confirm('ย้ายข้อมูลเก่ามายังผู้ใช้ปัจจุบันและลบคีย์เก่า?')) return;
-    if(tx.length) state.transactions = state.transactions.concat(tx);
-    if(cats) state.categories = cats;
-    if(goals.length) state.goals = state.goals.concat(goals);
-    if(settings) state.settings = settings;
-    saveAll();
-    // ลบคีย์เก่า
-    Object.values(K).forEach(k=>localStorage.removeItem(k));
-    renderAll(); checkLegacy();
-    alert('ย้ายข้อมูลสำเร็จ');
-  }else{
-    alert('ไม่พบข้อมูลเก่า');
-  }
+/* -------------------- Legacy migration -------------------- */
+function hasLegacyData(){ const k=GLOBAL.legacyKeys; return localStorage.getItem(k.tx)||localStorage.getItem(k.cats)||localStorage.getItem(k.goals); }
+function checkLegacy(){ const card = $('#legacyImportCard'); if(card) card.classList.toggle('hidden', !hasLegacyData()); }
+$('#migrateLegacy')?.addEventListener('click', ()=>{
+  const K=GLOBAL.legacyKeys, tx=loadJSON(K.tx,[]), cats=loadJSON(K.cats,null), goals=loadJSON(K.goals,[]), settings=loadJSON(K.settings,null);
+  if(!(tx.length||cats||goals.length||settings)){ alert('ไม่พบข้อมูลเก่า'); return; }
+  if(!confirm('ย้ายข้อมูลเก่ามายังผู้ใช้ปัจจุบันและลบคีย์เก่า?')) return;
+  if(tx.length) state.transactions.push(...tx); if(cats) state.categories=cats; if(goals.length) state.goals.push(...goals); if(settings) state.settings=settings;
+  saveAll(); Object.values(K).forEach(k=>localStorage.removeItem(k)); renderAll(); checkLegacy(); toast('ย้ายข้อมูลสำเร็จ','ok');
 });
 
-/* ====================== COMMON UTILS ====================== */
-const $ = sel => document.querySelector(sel);
-const $$ = sel => Array.from(document.querySelectorAll(sel));
-const fmt = n => (n||0).toLocaleString('th-TH',{minimumFractionDigits:0});
-const todayStr = () => new Date().toISOString().slice(0,10);
-const ym = d => d.slice(0,7);
-const byMonth = (list, month) => list.filter(t => ym(t.date)===month);
-const sum = arr => arr.reduce((a,b)=>a+b,0);
-const clamp = (x,min,max)=>Math.max(min,Math.min(max,x));
-
-/* ====================== UI: Tabs & Theme ====================== */
-$$('.tab').forEach(t=>{
-  t.onclick = ()=>{
-    $$('.tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    ['dashboard','transactions','categories','goals','settings'].forEach(id=>{
-      $('#'+id).classList.toggle('hidden', id!==t.dataset.tab);
-    });
-    renderAll();
-  }
-});
-$('#theme').onclick=()=>{
-  const body = document.getElementById('body');
-  if(body.classList.contains('light')){ body.classList.remove('light'); state.settings.theme='dark'; }
-  else{ body.classList.add('light'); state.settings.theme='light'; }
-  saveJSON(LS.settings,state.settings);
+/* -------------------- Theme & Tabs -------------------- */
+$$('.tab').forEach(t=> t.onclick=()=>{
+  $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+  ['dashboard','transactions','categories','goals','settings'].forEach(id=> $('#'+id).classList.toggle('hidden', id!==t.dataset.tab));
   renderAll();
-};
+});
+$('#theme').onclick=()=>{ const body=$('#body'); if(body.classList.contains('light')){ body.classList.remove('light'); state.settings.theme='dark'; } else { body.classList.add('light'); state.settings.theme='light'; } saveJSON(LS.settings,state.settings); renderAll(); };
 
-/* ====================== Month Picker ====================== */
-const mp = $('#monthPicker');
-const nowYM = new Date().toISOString().slice(0,7);
-function initMonthPicker(){
-  const key = `bp:${CURRENT_USER}:month`;
-  mp.value = loadJSON(key, nowYM);
-  mp.onchange =()=>{ saveJSON(key, mp.value); renderAll(); }
-}
+/* -------------------- Month Picker -------------------- */
+const mp = $('#monthPicker'); const nowYM = new Date().toISOString().slice(0,7);
+function initMonthPicker(){ const key=`bp:${CURRENT_USER||'guest'}:month`; mp.value=loadJSON(key,nowYM); mp.onchange=()=>{ saveJSON(key,mp.value); renderAll(); }; }
 $('#tDate')?.setAttribute('value', todayStr());
 
-/* ====================== Transactions ====================== */
-function addTransaction(tx){
-  state.transactions.push(tx);
-  saveJSON(LS.tx,state.transactions);
-  renderAll();
-}
-function removeTransaction(id){
-  state.transactions = state.transactions.filter(t=>t.id!==id);
-  saveJSON(LS.tx,state.transactions);
-  renderAll();
-}
-function fillCategorySelects(){
-  const opts = state.categories.map(c=>`<option>${c.name}</option>`).join('');
-  $('#tCategory').innerHTML = opts;
-  $('#filterCat').innerHTML = `<option value="">ทุกหมวด</option>` + opts;
-}
+/* -------------------- Transactions -------------------- */
+function addTransaction(tx){ state.transactions.push(tx); saveAll(); renderAll(); }
+function removeTransaction(id){ state.transactions=state.transactions.filter(t=>t.id!==id); saveAll(); renderAll(); }
+function fillCategorySelects(){ const opts=state.categories.map(c=>`<option>${c.name}</option>`).join(''); $('#tCategory').innerHTML=opts; $('#filterCat').innerHTML=`<option value="">ทุกหมวด</option>`+opts; }
 $('#addTx').onclick=()=>{
-  const tx = {
-    id: crypto.randomUUID(),
-    date: $('#tDate').value || todayStr(),
-    type: $('#tType').value,
-    amount: Math.max(0, Number($('#tAmount').value||0)),
-    category: $('#tCategory').value,
-    note: $('#tNote').value.trim(),
-    recurring: $('#tRecurring').checked
-  };
-  if(!tx.amount || !tx.date || !tx.category){ alert('กรุณากรอกวันที่/จำนวน/หมวดหมู่'); return; }
-  addTransaction(tx);
-  $('#tAmount').value=''; $('#tNote').value=''; $('#tRecurring').checked=false;
+  const tx={ id:crypto.randomUUID(), date:$('#tDate').value||todayStr(), type:$('#tType').value, amount:Math.max(0,Number($('#tAmount').value||0)), category:$('#tCategory').value, note:$('#tNote').value.trim(), recurring:$('#tRecurring').checked };
+  if(!tx.amount||!tx.date||!tx.category){ alert('กรุณากรอกวันที่/จำนวน/หมวดหมู่'); return; }
+  addTransaction(tx); $('#tAmount').value=''; $('#tNote').value=''; $('#tRecurring').checked=false;
 };
-
-/* Apply recurring at month start */
 function applyRecurring(month){
-  const y = month.slice(0,4), m = month.slice(5,7);
-  const first = `${y}-${m}-01`;
+  const y=month.slice(0,4), m=month.slice(5,7), first=`${y}-${m}-01`;
   const existing = new Set(byMonth(state.transactions, month).map(t=>t.note+'|'+t.category+'|'+t.amount+'|'+t.type));
-  state.transactions.filter(t=>t.recurring).forEach(t=>{
-    const key = t.note+'|'+t.category+'|'+t.amount+'|'+t.type;
-    if(!existing.has(key)){
-      state.transactions.push({...t, id: crypto.randomUUID(), date:first});
-    }
-  });
-  saveJSON(LS.tx,state.transactions);
+  state.transactions.filter(t=>t.recurring).forEach(t=>{ const key=t.note+'|'+t.category+'|'+t.amount+'|'+t.type; if(!existing.has(key)){ state.transactions.push({...t,id:crypto.randomUUID(),date:first}); }});
+  saveAll();
 }
 
-/* ====================== Categories & Budget ====================== */
-$('#addCat').onclick=()=>{
-  const name = $('#newCat').value.trim(); if(!name) return;
-  const budget = Number($('#newBudget').value||0);
-  if(state.categories.find(c=>c.name===name)){ alert('มีหมวดนี้อยู่แล้ว'); return; }
-  state.categories.push({name, budget});
-  saveJSON(LS.cats,state.categories);
-  $('#newCat').value=''; $('#newBudget').value='';
-  fillCategorySelects(); renderBudgets(); renderAll();
-};
-
+/* -------------------- Categories & Budget -------------------- */
+$('#addCat').onclick=()=>{ const name=$('#newCat').value.trim(); if(!name) return; const budget=Number($('#newBudget').value||0); if(state.categories.find(c=>c.name===name)){ alert('มีหมวดนี้อยู่แล้ว'); return; } state.categories.push({name,budget}); saveAll(); $('#newCat').value=''; $('#newBudget').value=''; fillCategorySelects(); renderBudgets(); renderAll(); };
 function renderBudgets(){
-  const month = mp.value;
-  const wrap = $('#catList'); wrap.innerHTML='';
-  const txm = byMonth(state.transactions, month).filter(t=>t.type==='expense');
+  const month=mp.value, wrap=$('#catList'); wrap.innerHTML=''; const txm=byMonth(state.transactions,month).filter(t=>t.type==='expense');
   state.categories.forEach(c=>{
-    const spent = sum(txm.filter(t=>t.category===c.name).map(t=>t.amount));
-    const percent = c.budget>0 ? clamp((spent/c.budget)*100,0,100) : 0;
-    const warn = c.budget>0 && spent>=c.budget*0.9;
-    const danger = c.budget>0 && spent>c.budget;
-    const row = document.createElement('div'); row.className='kpi';
+    const spent=sum(txm.filter(t=>t.category===c.name).map(t=>t.amount)), percent=c.budget>0?clamp((spent/c.budget)*100,0,100):0, warn=c.budget>0 && spent>=c.budget*0.9, danger=c.budget>0 && spent>c.budget;
+    const row=document.createElement('div'); row.className='kpi';
     row.innerHTML = `
       <div>
         <div style="font-weight:700">${c.name}</div>
         <div class="progress" style="margin-top:8px;width:240px"><i style="width:${percent}%"></i></div>
-        <div class="note" style="margin-top:6px">
-          ใช้ไป ${fmt(spent)} / ${c.budget?fmt(c.budget):'–'} บาท
-          ${warn?` <span class="badge" style="border-color:var(--warn);color:var(--warn)">ใกล้เต็มงบ</span>`:''}
-          ${danger?` <span class="badge" style="border-color:var(--danger);color:var(--danger)">เกินงบ</span>`:''}
-        </div>
+        <div class="note" style="margin-top:6px">ใช้ไป ${fmt(spent)} / ${c.budget?fmt(c.budget):'–'} บาท ${warn?`<span class="badge" style="border-color:var(--warn);color:var(--warn)">ใกล้เต็มงบ</span>`:''} ${danger?`<span class="badge" style="border-color:var(--danger);color:var(--danger)">เกินงบ</span>`:''}</div>
       </div>
       <div class="row" style="flex:0 0 340px">
         <input type="number" value="${c.budget||0}" data-cat="${c.name}" class="catBudget">
         <button data-cat="${c.name}" class="delCat danger">ลบ</button>
-      </div>
-    `;
+      </div>`;
     wrap.appendChild(row);
   });
-
-  $$('.catBudget').forEach(inp=>{
-    inp.onchange = ()=>{
-      const c = state.categories.find(x=>x.name===inp.dataset.cat);
-      c.budget = Number(inp.value||0);
-      saveJSON(LS.cats,state.categories); renderBudgets(); renderAll();
-    };
-  });
-  $$('.delCat').forEach(btn=>{
-    btn.onclick=()=>{
-      const name = btn.dataset.cat;
-      if(!confirm(`ลบหมวด "${name}" ?`)) return;
-      state.categories = state.categories.filter(c=>c.name!==name);
-      saveJSON(LS.cats,state.categories);
-      state.transactions = state.transactions.filter(t=>t.category!==name);
-      saveJSON(LS.tx,state.transactions);
-      fillCategorySelects(); renderBudgets(); renderAll();
-    };
-  });
+  $$('.catBudget').forEach(inp=> inp.onchange=()=>{ const c=state.categories.find(x=>x.name===inp.dataset.cat); c.budget=Number(inp.value||0); saveAll(); renderBudgets(); renderAll(); });
+  $$('.delCat').forEach(btn=> btn.onclick=()=>{ const name=btn.dataset.cat; if(!confirm(`ลบหมวด "${name}" ?`)) return; state.categories=state.categories.filter(c=>c.name!==name); state.transactions=state.transactions.filter(t=>t.category!==name); saveAll(); fillCategorySelects(); renderBudgets(); renderAll(); });
 }
 
-/* ====================== Goals ====================== */
-$('#addGoal').onclick=()=>{
-  const name = $('#goalName').value.trim();
-  const target = Number($('#goalTarget').value||0);
-  const due = $('#goalDue').value;
-  if(!name || !target){ alert('ระบุชื่อและจำนวนเป้าหมาย'); return; }
-  state.goals.push({id:crypto.randomUUID(), name,target,due, saved:0});
-  saveJSON(LS.goals,state.goals);
-  $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value='';
-  renderGoals();
-};
-
+/* -------------------- Goals -------------------- */
+$('#addGoal').onclick=()=>{ const name=$('#goalName').value.trim(), target=Number($('#goalTarget').value||0), due=$('#goalDue').value; if(!name||!target){ alert('ระบุชื่อและจำนวนเป้าหมาย'); return; } state.goals.push({id:crypto.randomUUID(),name,target,due,saved:0}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
 function renderGoals(){
-  const wrap = $('#goalList'); wrap.innerHTML='';
-  state.goals.forEach(g=>{
-    const pct = clamp((g.saved/g.target)*100,0,100);
-    const card = document.createElement('div'); card.className='card';
-    card.innerHTML = `
-      <h3>${g.name}</h3>
-      <div class="progress"><i style="width:${pct}%"></i></div>
-      <div class="row" style="margin-top:8px">
-        <div class="kpi"><div>สะสม</div><strong>${fmt(g.saved)}</strong></div>
-        <div class="kpi"><div>เป้าหมาย</div><strong>${fmt(g.target)}</strong></div>
-      </div>
-      <div class="note" style="margin-top:6px">กำหนดเสร็จ: ${g.due||'—'}</div>
-      <div class="row" style="margin-top:10px">
-        <input type="number" placeholder="เพิ่มเงินออม (บาท)" id="add_${g.id}">
-        <button class="accent" data-id="${g.id}">+ เพิ่มเข้ากระปุก</button>
-        <button class="danger" data-rm="${g.id}">ลบเป้าหมาย</button>
-      </div>
-    `;
-    wrap.appendChild(card);
-  });
-  // bind
-  $$('#goals .card button.accent').forEach(b=>{
-    b.onclick=()=>{
-      const id=b.dataset.id; const v = Number(document.getElementById('add_'+id).value||0);
-      const g = state.goals.find(x=>x.id===id); g.saved += Math.max(0,v);
-      saveJSON(LS.goals,state.goals); renderGoals();
-    };
-  });
-  $$('#goals .card button.danger').forEach(b=>{
-    b.onclick=()=>{
-      const id=b.dataset.rm;
-      state.goals = state.goals.filter(x=>x.id!==id);
-      saveJSON(LS.goals,state.goals); renderGoals();
-    };
-  });
+  const wrap=$('#goalList'); wrap.innerHTML=''; state.goals.forEach(g=>{ const pct=clamp((g.saved/g.target)*100,0,100); const card=document.createElement('div'); card.className='card'; card.innerHTML=`
+    <h3>${g.name}</h3>
+    <div class="progress"><i style="width:${pct}%"></i></div>
+    <div class="row" style="margin-top:8px">
+      <div class="kpi"><div>สะสม</div><strong>${fmt(g.saved)}</strong></div>
+      <div class="kpi"><div>เป้าหมาย</div><strong>${fmt(g.target)}</strong></div>
+    </div>
+    <div class="note" style="margin-top:6px">กำหนดเสร็จ: ${g.due||'—'}</div>
+    <div class="row" style="margin-top:10px">
+      <input type="number" placeholder="เพิ่มเงินออม (บาท)" id="add_${g.id}">
+      <button class="accent" data-id="${g.id}">+ เพิ่มเข้ากระปุก</button>
+      <button class="danger" data-rm="${g.id}">ลบเป้าหมาย</button>
+    </div>`; wrap.appendChild(card); });
+  $$('#goals .card button.accent').forEach(b=> b.onclick=()=>{ const id=b.dataset.id; const v=Number(document.getElementById('add_'+id).value||0); const g=state.goals.find(x=>x.id===id); g.saved+=Math.max(0,v); saveAll(); renderGoals(); });
+  $$('#goals .card button.danger').forEach(b=> b.onclick=()=>{ const id=b.dataset.rm; state.goals=state.goals.filter(x=>x.id!==id); saveAll(); renderGoals(); });
 }
 
-/* ====================== Table + Filters ====================== */
+/* -------------------- Table + Filters -------------------- */
 function renderTable(){
-  const month = mp.value;
-  applyRecurring(month);
-  const tbody = $('#txTable tbody'); tbody.innerHTML='';
-  let rows = byMonth(state.transactions, month);
-  const q = $('#search').value?.toLowerCase?.() || '';
-  const ftype = $('#filterType').value || '';
-  const fcat = $('#filterCat').value || '';
-  if(q) rows = rows.filter(t=>((t.note||'')+' '+t.category).toLowerCase().includes(q));
-  if(ftype) rows = rows.filter(t=>t.type===ftype);
-  if(fcat) rows = rows.filter(t=>t.category===fcat);
-
+  const month=mp.value; applyRecurring(month);
+  const tbody=$('#txTable tbody'); tbody.innerHTML='';
+  let rows=byMonth(state.transactions,month);
+  const q=($('#search').value||'').toLowerCase(), ftype=$('#filterType').value||'', fcat=$('#filterCat').value||'';
+  if(q) rows=rows.filter(t=>((t.note||'')+' '+t.category).toLowerCase().includes(q));
+  if(ftype) rows=rows.filter(t=>t.type===ftype);
+  if(fcat) rows=rows.filter(t=>t.category===fcat);
   rows.sort((a,b)=>a.date.localeCompare(b.date));
-  rows.forEach(t=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${t.date}</td>
-      <td><span class="badge" style="border-color:${t.type==='income'?'var(--ok)':'var(--danger)'};color:${t.type==='income'?'var(--ok)':'var(--danger)'}">${t.type==='income'?'รับ':'จ่าย'}</span></td>
-      <td>${t.category}</td>
-      <td class="right">${fmt(t.amount)}</td>
-      <td>${t.note||''} ${t.recurring?'<span class="badge">ประจำ</span>':''}</td>
-      <td class="right"><button data-id="${t.id}" class="delTx">ลบ</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-  $$('.delTx').forEach(b=> b.onclick=()=>{ removeTransaction(b.dataset.id); });
+  rows.forEach(t=>{ const tr=document.createElement('tr'); tr.innerHTML=`
+    <td>${t.date}</td>
+    <td><span class="badge" style="border-color:${t.type==='income'?'var(--ok)':'var(--danger)'};color:${t.type==='income'?'var(--ok)':'var(--danger)'}">${t.type==='income'?'รับ':'จ่าย'}</span></td>
+    <td>${t.category}</td>
+    <td class="right">${fmt(t.amount)}</td>
+    <td>${t.note||''} ${t.recurring?'<span class="badge">ประจำ</span>':''}</td>
+    <td class="right"><button data-id="${t.id}" class="delTx">ลบ</button></td>`; tbody.appendChild(tr); });
+  $$('.delTx').forEach(b=> b.onclick=()=> removeTransaction(b.dataset.id));
 }
-$('#search').oninput = renderTable;
-$('#filterType').onchange = renderTable;
-$('#filterCat').onchange = renderTable;
+$('#search').oninput = renderTable; $('#filterType').onchange = renderTable; $('#filterCat').onchange = renderTable;
 
-/* ====================== Dashboard (KPIs + Alerts) ====================== */
+/* -------------------- Dashboard -------------------- */
 function renderKPIs(){
-  const month = mp.value;
-  const txm = byMonth(state.transactions, month);
-  const income = sum(txm.filter(t=>t.type==='income').map(t=>t.amount));
-  const expense = sum(txm.filter(t=>t.type==='expense').map(t=>t.amount));
-  $('#kpiIncome').textContent = fmt(income);
-  $('#kpiExpense').textContent = fmt(expense);
-  $('#kpiBalance').textContent = fmt(income-expense);
-
-  // Smart alert: หากรายจ่ายเฉลี่ย 3 เดือนที่ผ่านมา < รายจ่ายเดือนนี้ 25%+
-  const ymNow = month;
-  const prevMonths = [-1,-2,-3].map(off=>{
-    const [y,m]=ymNow.split('-').map(Number);
-    const d=new Date(y, m-1+off, 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  });
-  const prev = prevMonths.map(m=>{
-    const e = sum(byMonth(state.transactions,m).filter(t=>t.type==='expense').map(t=>t.amount));
-    return e;
-  }).filter(x=>x>0);
-  const avgPrev = prev.length? sum(prev)/prev.length : 0;
-  const alert = $('#smartAlert');
-  if(avgPrev && expense > avgPrev*1.25){
-    alert.textContent = `แจ้งเตือน: รายจ่ายเดือนนี้ (${fmt(expense)}) สูงกว่าค่าเฉลี่ย 3 เดือนที่ผ่านมา (${fmt(Math.round(avgPrev))}) มากกว่า 25%`;
-  }else{
-    alert.textContent = '';
-  }
+  const month=mp.value, txm=byMonth(state.transactions,month), income=sum(txm.filter(t=>t.type==='income').map(t=>t.amount)), expense=sum(txm.filter(t=>t.type==='expense').map(t=>t.amount));
+  $('#kpiIncome').textContent=fmt(income); $('#kpiExpense').textContent=fmt(expense); $('#kpiBalance').textContent=fmt(income-expense);
+  const ymNow=month, prevMonths=[-1,-2,-3].map(off=>{ const [y,m]=ymNow.split('-').map(Number); const d=new Date(y,m-1+off,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const prev=prevMonths.map(m=> sum(byMonth(state.transactions,m).filter(t=>t.type==='expense').map(t=>t.amount))).filter(x=>x>0);
+  const avgPrev=prev.length?sum(prev)/prev.length:0; const alert=$('#smartAlert');
+  if(avgPrev && expense>avgPrev*1.25){ alert.textContent=`แจ้งเตือน: รายจ่ายเดือนนี้ (${fmt(expense)}) สูงกว่าค่าเฉลี่ย 3 เดือนที่ผ่านมา (${fmt(Math.round(avgPrev))}) มากกว่า 25%`; } else { alert.textContent=''; }
 }
 
-/* ====================== Simple SVG Charts ====================== */
+/* -------------------- Charts -------------------- */
 function renderPie(){
-  const svg = $('#pie'); svg.innerHTML='';
-  const month = mp.value;
-  const exp = byMonth(state.transactions, month).filter(t=>t.type==='expense');
-  const total = sum(exp.map(t=>t.amount));
+  const svg=$('#pie'); svg.innerHTML=''; const month=mp.value; const exp=byMonth(state.transactions,month).filter(t=>t.type==='expense'); const total=sum(exp.map(t=>t.amount));
   if(!total){ svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)">ไม่มีข้อมูล</text>'; return; }
-  const byCat = {};
-  exp.forEach(t=> byCat[t.category]=(byCat[t.category]||0)+t.amount);
-  const cx=120, cy=120, r=90;
-  let start=0, i=0;
-  Object.entries(byCat).forEach(([cat,val])=>{
-    const frac = val/total; const end = start + frac*2*Math.PI;
-    const x1=cx+r*Math.cos(start), y1=cy+r*Math.sin(start);
-    const x2=cx+r*Math.cos(end),   y2=cy+r*Math.sin(end);
-    const large = frac>0.5?1:0;
-    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d',`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`);
-    path.setAttribute('fill',`hsl(${(i*57)%360} 70% 55%)`);
-    path.setAttribute('opacity','0.9');
-    svg.appendChild(path);
-    start=end; i++;
-  });
-  // Legend
-  let y=10;
-  Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([cat,val],idx)=>{
-    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-    const color=`hsl(${(idx*57)%360} 70% 55%)`;
-    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x',240); rect.setAttribute('y',y); rect.setAttribute('width',14); rect.setAttribute('height',14); rect.setAttribute('fill',color);
-    const tx=document.createElementNS('http://www.w3.org/2000/svg','text'); tx.setAttribute('x',260); tx.setAttribute('y',y+12); tx.setAttribute('fill','currentColor'); tx.textContent=`${cat} • ${Math.round(val/total*100)}%`;
-    g.appendChild(rect); g.appendChild(tx); svg.appendChild(g); y+=18;
-  });
+  const byCat={}; exp.forEach(t=>byCat[t.category]=(byCat[t.category]||0)+t.amount);
+  const cx=120,cy=120,r=90; let start=0, i=0;
+  Object.entries(byCat).forEach(([cat,val])=>{ const frac=val/total, end=start+frac*2*Math.PI, x1=cx+r*Math.cos(start), y1=cy+r*Math.sin(start), x2=cx+r*Math.cos(end), y2=cy+r*Math.sin(end), large=frac>0.5?1:0; const path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d',`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`); path.setAttribute('fill',`hsl(${(i*57)%360} 70% 55%)`); path.setAttribute('opacity','0.9'); svg.appendChild(path); start=end; i++; });
+  let y=10; Object.entries(byCat).sort((a,b)=>b[1]-a[1]).forEach(([cat,val],idx)=>{ const g=document.createElementNS('http://www.w3.org/2000/svg','g'); const color=`hsl(${(idx*57)%360} 70% 55%)`; const rect=document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x',240); rect.setAttribute('y',y); rect.setAttribute('width',14); rect.setAttribute('height',14); rect.setAttribute('fill',color); const tx=document.createElementNS('http://www.w3.org/2000/svg','text'); tx.setAttribute('x',260); tx.setAttribute('y',y+12); tx.setAttribute('fill','currentColor'); tx.textContent=`${cat} • ${Math.round(val/total*100)}%`; g.appendChild(rect); g.appendChild(tx); svg.appendChild(g); y+=18; });
 }
-
 function renderBars(){
-  const svg = $('#bars'); svg.innerHTML='';
-  const month = mp.value;
-  const txm = byMonth(state.transactions, month);
-  if(!txm.length){ svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)">ไม่มีข้อมูล</text>'; return; }
-  const [y,m] = month.split('-').map(Number);
-  const days = new Date(y, m, 0).getDate();
-  const byDay = Array.from({length:days},(_,i)=>({d:i+1,income:0,expense:0}));
-  txm.forEach(t=>{
-    const d = Number(t.date.slice(8,10))-1;
-    if(t.type==='income') byDay[d].income += t.amount; else byDay[d].expense += t.amount;
-  });
-  const max = Math.max(...byDay.map(x=>Math.max(x.income,x.expense)),1);
-  const w=svg.clientWidth||360, h=240, pad=24;
-  const barW = (w - pad*2)/days;
-  byDay.forEach((x,i)=>{
-    const ei = Math.round((x.expense/max)*(h-pad*2));
-    const ii = Math.round((x.income/max)*(h-pad*2));
-    const gx=document.createElementNS('http://www.w3.org/2000/svg','g');
-    const rx = pad + i*barW;
-    const eBar=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    eBar.setAttribute('x',rx); eBar.setAttribute('y',h-pad-ei); eBar.setAttribute('width',Math.max(1,barW*0.8)); eBar.setAttribute('height',ei);
-    eBar.setAttribute('fill','var(--danger)'); eBar.setAttribute('opacity','0.7');
-    const iBar=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    iBar.setAttribute('x',rx); iBar.setAttribute('y',h-pad-ii-ei); iBar.setAttribute('width',Math.max(1,barW*0.8)); iBar.setAttribute('height',ii);
-    iBar.setAttribute('fill','var(--ok)'); iBar.setAttribute('opacity','0.7');
-    gx.appendChild(eBar); gx.appendChild(iBar); svg.appendChild(gx);
-  });
-  // axis
-  const axis=document.createElementNS('http://www.w3.org/2000/svg','line');
-  axis.setAttribute('x1',pad); axis.setAttribute('y1',h-pad); axis.setAttribute('x2',w-pad); axis.setAttribute('y2',h-pad);
-  axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','0.3'); svg.appendChild(axis);
+  const svg=$('#bars'); svg.innerHTML=''; const month=mp.value, txm=byMonth(state.transactions,month); if(!txm.length){ svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)">ไม่มีข้อมูล</text>'; return; }
+  const [y,m]=month.split('-').map(Number), days=new Date(y,m,0).getDate(); const byDay=Array.from({length:days},(_,i)=>({d:i+1,income:0,expense:0}));
+  txm.forEach(t=>{ const d=Number(t.date.slice(8,10))-1; if(t.type==='income') byDay[d].income+=t.amount; else byDay[d].expense+=t.amount; });
+  const max=Math.max(...byDay.map(x=>Math.max(x.income,x.expense)),1), w=svg.clientWidth||360, h=240, pad=24, barW=(w-pad*2)/days;
+  byDay.forEach((x,i)=>{ const ei=Math.round((x.expense/max)*(h-pad*2)), ii=Math.round((x.income/max)*(h-pad*2)); const gx=document.createElementNS('http://www.w3.org/2000/svg','g'); const rx=pad+i*barW;
+    const eBar=document.createElementNS('http://www.w3.org/2000/svg','rect'); eBar.setAttribute('x',rx); eBar.setAttribute('y',h-pad-ei); eBar.setAttribute('width',Math.max(1,barW*0.8)); eBar.setAttribute('height',ei); eBar.setAttribute('fill','var(--danger)'); eBar.setAttribute('opacity','0.7');
+    const iBar=document.createElementNS('http://www.w3.org/2000/svg','rect'); iBar.setAttribute('x',rx); iBar.setAttribute('y',h-pad-ii-ei); iBar.setAttribute('width',Math.max(1,barW*0.8)); iBar.setAttribute('height',ii); iBar.setAttribute('fill','var(--ok)'); iBar.setAttribute('opacity','0.7');
+    gx.appendChild(eBar); gx.appendChild(iBar); svg.appendChild(gx); });
+  const axis=document.createElementNS('http://www.w3.org/2000/svg','line'); axis.setAttribute('x1',pad); axis.setAttribute('y1',h-pad); axis.setAttribute('x2',w-pad); axis.setAttribute('y2',h-pad); axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','0.3'); svg.appendChild(axis);
 }
 
-/* ====================== Export / Import ====================== */
-$('#exportJson').onclick=()=>{
-  const payload = { user: CURRENT_USER, state };
-  const blob = new Blob([JSON.stringify(payload)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`budgetpro_${CURRENT_USER}.json`; a.click();
-};
-$('#exportCsv').onclick=()=>{
-  const rows = [['date','type','category','amount','note','recurring']].concat(
-    state.transactions.map(t=>[t.date,t.type,t.category,t.amount,t.note||'',t.recurring?'1':'0'])
-  );
-  const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`transactions_${CURRENT_USER}.csv`; a.click();
-};
-$('#importJson').onclick=()=>{
-  const f=$('#importFile').files?.[0]; if(!f){ alert('เลือกไฟล์ JSON ก่อน'); return; }
-  const r=new FileReader(); r.onload=()=>{
-    try{
-      const obj=JSON.parse(r.result);
-      if(obj.state){
-        state = obj.state;
-        saveAll();
-        fillCategorySelects(); renderAll();
-      }else alert('ไฟล์ไม่ถูกต้อง');
-    }catch(e){ alert('อ่านไฟล์ไม่สำเร็จ'); }
-  }; r.readAsText(f);
-};
-$('#resetAll').onclick=()=>{
-  if(!confirm('ล้างข้อมูลทั้งหมดของผู้ใช้ปัจจุบัน?')) return;
-  saveJSON(LS.tx, []); saveJSON(LS.cats, DefaultCategories.slice()); saveJSON(LS.goals, []); saveJSON(LS.settings, {theme:'light'});
-  initUserState(); renderAll();
-};
+/* -------------------- Export/Import -------------------- */
+$('#exportJson').onclick=()=>{ const payload={user:CURRENT_USER,state}; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'})); a.download=`budgetpro_${CURRENT_USER}.json`; a.click(); };
+$('#exportCsv').onclick=()=>{ const rows=[['date','type','category','amount','note','recurring']].concat(state.transactions.map(t=>[t.date,t.type,t.category,t.amount,t.note||'',t.recurring?'1':'0'])); const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`transactions_${CURRENT_USER}.csv`; a.click(); };
+$('#importJson').onclick=()=>{ const f=$('#importFile').files?.[0]; if(!f){ alert('เลือกไฟล์ JSON ก่อน'); return; } const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(obj.state){ state=obj.state; saveAll(); fillCategorySelects(); renderAll(); toast('นำเข้าข้อมูลสำเร็จ','ok'); } else alert('ไฟล์ไม่ถูกต้อง'); }catch(e){ alert('อ่านไฟล์ไม่สำเร็จ'); } }; r.readAsText(f); };
+$('#resetAll').onclick=()=>{ if(!confirm('ล้างข้อมูลทั้งหมดของผู้ใช้ปัจจุบัน?')) return; saveJSON(LS.tx,[]); saveJSON(LS.cats,DefaultCategories.slice()); saveJSON(LS.goals,[]); saveJSON(LS.settings,{theme:'light'}); initUserState(); renderAll(); };
 
-/* ====================== Demo Data ====================== */
-$('#addDemo').onclick=()=>{
-  const month = mp.value;
-  const [y,m]=month.split('-').map(Number);
-  const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
-  const cats=state.categories.map(c=>c.name);
-  for(let i=0;i<35;i++){
-    const d=new Date(y,m-1, rand(1, Math.min(28, new Date(y,m,0).getDate())));
-    const type=Math.random()<.25?'income':'expense';
-    const obj={
-      id:crypto.randomUUID(),
-      date:d.toISOString().slice(0,10),
-      type,
-      amount:type==='income'?rand(500,3000):rand(30,800),
-      category: type==='income' ? 'อื่นๆ' : cats[rand(0,cats.length-1)],
-      note:type==='income'?'รายได้':'ค่าใช้จ่ายสุ่ม',
-      recurring:false
-    };
-    state.transactions.push(obj);
-  }
-  saveAll(); renderAll();
-};
+/* -------------------- Demo -------------------- */
+$('#addDemo').onclick=()=>{ const month=mp.value; const [y,m]=month.split('-').map(Number); const rand=(a,b)=>Math.floor(Math.random()*(b-a+1))+a; const cats=state.categories.map(c=>c.name);
+  for(let i=0;i<35;i++){ const d=new Date(y,m-1,rand(1,Math.min(28,new Date(y,m,0).getDate()))); const type=Math.random()<.25?'income':'expense';
+    state.transactions.push({id:crypto.randomUUID(),date:d.toISOString().slice(0,10),type,amount:type==='income'?rand(500,3000):rand(30,800),category:type==='income'?'อื่นๆ':cats[rand(0,cats.length-1)],note:type==='income'?'รายได้':'ค่าใช้จ่ายสุ่ม',recurring:false}); }
+  saveAll(); renderAll(); };
 
-/* ====================== Render All ====================== */
-function renderAll(){
-  // ป้องกันก่อนล็อกอิน
-  if(!CURRENT_USER){ return; }
-  // ตั้งค่าธีม
-  if(state.settings.theme==='dark'){ document.getElementById('body').classList.remove('light'); }
-  else{ document.getElementById('body').classList.add('light'); }
-  // ส่วนต่างๆ
-  fillCategorySelects();
-  renderKPIs();
-  renderPie();
-  renderBars();
-  renderTable();
-  renderBudgets();
-  renderGoals();
-}
+/* -------------------- Render -------------------- */
+function renderAll(){ if(!CURRENT_USER) return; if(state.settings.theme==='dark') $('#body').classList.remove('light'); else $('#body').classList.add('light'); fillCategorySelects(); renderKPIs(); renderPie(); renderBars(); renderTable(); renderBudgets(); renderGoals(); }
 
-/* ====================== BOOT ====================== */
+/* -------------------- Boot -------------------- */
 (function boot(){
   refreshKnownUsers();
-  const user = sessionUser();
-  if(!user){
-    // แสดงหน้าล็อกอิน
-    authEl.classList.remove('hidden');
-    // ชื่อผู้ใช้ default เป็น guest (ไม่ล็อกอินจริง)
-    initMonthPicker();
-    return;
-  }
-  // เข้าสู่ระบบแล้ว
-  document.getElementById('auth').classList.add('hidden');
-  swapUser(user);
-  initMonthPicker();
+  const user=sessionUser();
+  if(!user){ authEl.classList.remove('hidden'); initMonthPicker(); return; }
+  authEl.classList.add('hidden'); swapUser(user); initMonthPicker();
+  $('#logout').onclick = logout;
 })();
 </script>
 </body>
