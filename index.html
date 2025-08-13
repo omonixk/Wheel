@@ -68,7 +68,6 @@
   .err{color:var(--danger)}
   .ok{color:var(--ok)}
   .btn-ghost{background:transparent;border:1px dashed var(--border)}
-  .inline{display:inline-flex;align-items:center;gap:6px}
   .small{font-size:12px}
   .busy{opacity:.7;pointer-events:none}
 </style>
@@ -259,17 +258,33 @@ const GLOBAL = {
 const loadJSON = (k,d)=>{ try{return JSON.parse(localStorage.getItem(k)) ?? d}catch{return d} };
 const saveJSON = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
 const b64 = (buf)=> btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+// SHA-256 พร้อม fallback (หากไม่มี crypto.subtle)
 async function sha256(str){
-  if(window.crypto?.subtle){
+  if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return b64(buf);
   } else {
-    // fallback (ไม่ปลอดภัยเท่า แต่กันปุ่มเงียบบนบางบราวเซอร์เก่า)
+    // fallback (ไม่แข็งแรงเท่า แต่ใช้ได้ออฟไลน์/บราวเซอร์เก่า)
     let h=0; for(let i=0;i<str.length;i++){ h=(h<<5)-h+str.charCodeAt(i); h|=0; }
     return String(h);
   }
 }
-function randomSalt(len=16){ const a=new Uint8Array(len); (crypto.getRandomValues||((b)=>{for(let i=0;i<b.length;i++)b[i]=Math.random()*256|0;}))(a); return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+
+// สร้าง salt พร้อม fallback ถ้า getRandomValues ใช้ไม่ได้
+function randomSalt(len=16){
+  if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+    const a=new Uint8Array(len);
+    crypto.getRandomValues(a);
+    return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join('');
+  } else {
+    console.warn('⚠ crypto.getRandomValues ใช้ไม่ได้ — ใช้ fallback (ความปลอดภัยลดลง)');
+    let s=""; const chars="abcdef0123456789";
+    for(let i=0;i<len*2;i++) s += chars.charAt(Math.floor(Math.random()*chars.length));
+    return s;
+  }
+}
+
 const getUsers = ()=> loadJSON(GLOBAL.usersKey, {});
 const setUsers = (obj)=> saveJSON(GLOBAL.usersKey, obj);
 const userKeys = (u)=>({ tx:`bp:${u}:transactions`, cats:`bp:${u}:categories`, goals:`bp:${u}:goals`, settings:`bp:${u}:settings` });
