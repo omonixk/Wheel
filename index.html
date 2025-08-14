@@ -192,19 +192,27 @@ function bootUser(u){
       : { tx:load(KEYS.tx,[]), cats:normalizeCats(load(KEYS.cats, DEFAULT_CAT_NAMES)), goals:load(KEYS.goals,[]), settings:Object.assign({incomeTags:[]}, load(KEYS.settings, {})) };
   ensureState();
   saveAll();
-  $('#currentUser').textContent='@'+u; $('#currentUser').classList.remove('hidden'); $('#logout').classList.remove('hidden');
+  setHeaderUser('@'+u);
 }
-function saveAll(){
-  try{
-    ensureState();
-    save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings);
-  }catch(e){ console.warn('local save error:', e); }
-}
+function saveAll(){ try{ ensureState(); save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings);}catch(e){} }
 
+/* ===== header / tabs ===== */
 $$('.tab').forEach(t=>t.onclick=()=>{ $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); ['dashboard','transactions','categories','goals','analysis','settings'].forEach(id=>$('#'+id).classList.toggle('hidden', id!==t.dataset.tab)); renderAll(); });
 $('#logout').onclick=logout;
 const mp=$('#monthPicker'); mp.value=new Date().toISOString().slice(0,7); mp.onchange=renderAll;
 
+/* ===== helpers UI header & month jump (เพิ่มใหม่) ===== */
+function setHeaderUser(label){
+  const el = document.getElementById('currentUser');
+  if(label){ el.textContent = label; el.classList.remove('hidden'); }
+  document.getElementById('logout').classList.remove('hidden');
+}
+function jumpToMonthOf(dateStr){
+  const m = dateStr.slice(0,7);
+  if(mp.value !== m) mp.value = m;
+}
+
+/* ===== categories ===== */
 function fillCategorySelects(){
   const opts=S.cats.map(c=>`<option>${c.name}</option>`).join('');
   const incomeOpts = ['อื่นๆ', ...S.settings.incomeTags].map(n=>`<option>${n}</option>`).join('') + `<option value="__new__">อื่นๆ (เพิ่มใหม่…)</option>`;
@@ -233,6 +241,7 @@ function renderCats(){
 }
 $('#addCat').onclick=()=>{ const n=$('#newCat').value.trim(); if(!n) return; if(S.cats.find(c=>c.name===n)){alert('มีหมวดนี้แล้ว');return} const budget=+($('#newBudget').value||0); S.cats.push({name:n,budget}); saveAll(); $('#newCat').value=''; $('#newBudget').value=''; fillCategorySelects(); renderCats(); renderAll(); };
 
+/* ===== transactions ===== */
 $('#dDate').value=today();
 $('#dIncomeCat').addEventListener('change',()=>$('#newIncomeTag').classList.toggle('hidden',$('#dIncomeCat').value!=='__new__'));
 $('#dExpenseCat').addEventListener('change',()=>$('#newExpenseCat').classList.toggle('hidden',$('#dExpenseCat').value!=='__new__'));
@@ -258,6 +267,7 @@ $('#saveDay').onclick=()=>{
   if(exp>0) add.push({id:uid(),date,type:'expense',amount:exp,category:expCat||'อื่นๆ',note});
   if(!add.length){ alert('กรอกอย่างน้อย 1 ช่อง: รายรับ หรือ รายจ่าย'); return; }
   S.tx.push(...add); saveAll();
+  jumpToMonthOf(date);       /* กระโดดเดือนให้ตรงกับวันที่ที่บันทึก */
   $('#dIncome').value=''; $('#dExpense').value=''; $('#dNote').value='';
   $('#newIncomeTag').value=''; $('#newExpenseCat').value=''; $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
   fillCategorySelects(); renderAll();
@@ -278,6 +288,7 @@ function renderTable(){
 }
 $('#search').oninput=renderTable; $('#filterType').onchange=renderTable; $('#filterCat').onchange=renderTable;
 
+/* ===== goals ===== */
 $('#addGoal').onclick=()=>{ ensureState(); const n=$('#goalName').value.trim(), t=+($('#goalTarget').value||0), d=$('#goalDue').value; if(!n||!t||!d){alert('กรอกให้ครบ');return} S.goals.push({id:uid(),name:n,target:t,saved:0,due:d}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
 function daysBetween(a,b){return Math.ceil((b-a)/(1000*60*60*24))}
 function renderGoals(){
@@ -294,6 +305,7 @@ function renderGoals(){
   $$('#goalList [data-del]').forEach(b=>b.onclick=()=>{ const id=b.dataset.del; S.goals=S.goals.filter(x=>x.id!==id); saveAll(); renderGoals(); });
 }
 
+/* ===== KPIs & charts ===== */
 function renderKPIs(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const inc=sum(txm.filter(t=>t.type==='income').map(t=>t.amount));
@@ -321,6 +333,7 @@ function renderBars(){
   const axis=document.createElementNS('http://www.w3.org/2000/svg','line'); axis.setAttribute('x1',p); axis.setAttribute('x2',w-p); axis.setAttribute('y1',h-p); axis.setAttribute('y2',h-p); axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','.3'); svg.appendChild(axis);
 }
 
+/* ===== analysis ===== */
 function renderAnalysis(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const expenseDays=new Set(txm.filter(t=>t.type==='expense').map(t=>t.date)).size || new Set(txm.map(t=>t.date)).size;
@@ -338,28 +351,20 @@ function renderAnalysis(){
   const w=svg.clientWidth||600,h=240,p=28,bw=(w-p*2)/(months.length*2+months.length*.5),max=Math.max(1,...data.flatMap(x=>[x.inc,x.exp]));
   data.forEach((d,i)=>{ const x=p+i*(bw*2+bw*.5), hi=Math.round((d.inc/max)*(h-p*2)), he=Math.round((d.exp/max)*(h-p*2));
     const ri=document.createElementNS('http://www.w3.org/2000/svg','rect'); ri.setAttribute('x',x); ri.setAttribute('y',h-p-hi); ri.setAttribute('width',bw); ri.setAttribute('height',hi); ri.setAttribute('fill','var(--ok)'); ri.setAttribute('opacity','.75');
-    const re=document.createElementNS('http://www.w3.org/2000/svg','rect'); re.setAttribute('x',x+bw+2); re.setAttribute('y',h-p-he); re.setAttribute('width',bw); re.setAttribute('height',he); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.75'); svg.appendChild(ri); svg.appendChild(re); });
+    const re=document.createElementNS('http://www.w3.org/0  svg','rect'); re.setAttribute('x',x+bw+2); re.setAttribute('y',h-p-he); re.setAttribute('width',bw); re.setAttribute('height',he); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.75'); svg.appendChild(ri); svg.appendChild(re); });
 }
 
+/* ===== export / import ===== */
 $('#exportJson').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({user:CUR,S})],{type:'application/json'})); a.download=`budgetpro_${CUR}.json`; a.click(); };
 $('#exportCsv').onclick=()=>{ const rows=[['date','type','category','amount','note']].concat(S.tx.map(t=>[t.date,t.type,t.category,t.amount,t.note||''])); const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`transactions_${CUR}.csv`; a.click(); };
 $('#importJson').onclick=()=>{ const f=$('#importFile').files?.[0]; if(!f){alert('เลือกไฟล์');return} const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.S){ S=o.S; ensureState(); saveAll(); } else alert('ไฟล์ไม่ถูกต้อง') }catch{ alert('อ่านไฟล์ไม่สำเร็จ') } renderAll(); }; r.readAsText(f); };
 $('#resetAll').onclick=()=>{ if(!confirm('ล้างทั้งหมด?'))return; S={tx:[],cats:normalizeCats(DEFAULT_CAT_NAMES),goals:[],settings:{incomeTags:[]}}; saveAll(); renderAll(); };
 
+/* ===== orchestrator ===== */
 function renderAll(){ if(!CUR) return; ensureState(); fillCategorySelects(); renderKPIs(); renderPie(); renderBars(); renderTable(); renderCats(); renderGoals(); renderAnalysis(); }
 
-window.localLogin = async function(){
-  try{
-    await _loginLocal($('#authUser').value.trim(), $('#authPass').value);
-    bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll();
-  }catch(e){ $('#authMsg').textContent=e.message }
-};
-window.localSignup = async function(){
-  try{
-    await _signupLocal($('#authUser').value.trim(), $('#authPass').value);
-    bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll();
-  }catch(e){ $('#authMsg').textContent=e.message }
-};
+window.localLogin = async function(){ try{ await _loginLocal($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
+window.localSignup = async function(){ try{ await _signupLocal($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
 
 (function(){
   if(!CUR){ $('#auth').classList.remove('hidden'); }
@@ -371,10 +376,10 @@ window.localSignup = async function(){
 })();
 </script>
 
-<!-- ========== Firebase: Auth + Firestore sync ========== -->
+<!-- ========== Firebase: Auth + Firestore sync (จำการล็อกอิน + บูตผู้ใช้คลาวด์) ========== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
   import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -393,12 +398,28 @@ window.localSignup = async function(){
 
   const userDoc = () => doc(db, "users", auth.currentUser.uid, "app", "state");
   let unsubscribe = null;
+  let authReady = false;
 
-  function ensureState(){ if(!window.S){ window.S={tx:[],cats:['อาหาร','เดินทาง','บิลรายเดือน','บันเทิง','อื่นๆ'].map(n=>({name:n,budget:0})),goals:[],settings:{incomeTags:[]}}; } }
+  function ensureState(){
+    if(!window.S){
+      window.S = {
+        tx: [],
+        cats: ['อาหาร','เดินทาง','บิลรายเดือน','บันเทิง','อื่นๆ'].map(n=>({name:n,budget:0})),
+        goals: [],
+        settings: { incomeTags: [] }
+      };
+    }
+  }
+  function cloudBoot(uid, emailLabel){
+    window.CUR  = uid;
+    window.KEYS = { tx:`bp:${uid}:tx`, cats:`bp:${uid}:cats`, goals:`bp:${uid}:goals`, settings:`bp:${uid}:settings` };
+    window.setHeaderUser && window.setHeaderUser(emailLabel || '@user');
+  }
 
   async function cloudLoadAndSubscribe() {
     if (!auth.currentUser) return;
     ensureState();
+    cloudBoot(auth.currentUser.uid, auth.currentUser.email || '@user');
     try{
       const snap = await getDoc(userDoc());
       if (snap.exists()) {
@@ -413,18 +434,16 @@ window.localSignup = async function(){
         const remote = d.data();
         if (remote?.S) { window.S = remote.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
       });
-    }catch(e){
-      console.error('cloudLoad error', e);
-      const m=document.getElementById('authMsg'); if(m) m.textContent=e.message||'เชื่อมต่อคลาวด์ผิดพลาด';
-    }
+      document.getElementById('auth')?.remove?.();
+    }catch(e){ const m=document.getElementById('authMsg'); if(m) m.textContent=e.message||'เชื่อมต่อคลาวด์ผิดพลาด'; }
   }
 
   const _saveAllOrig = window.saveAll;
   window.saveAll = function(){
     try{
       _saveAllOrig && _saveAllOrig();
-      if (auth.currentUser) { ensureState(); setDoc(userDoc(), { S: window.S }, { merge: true }).catch(e=>console.warn('sync error',e)); }
-    }catch(e){ console.warn('saveAll hook error', e); }
+      if (auth.currentUser) { ensureState(); setDoc(userDoc(), { S: window.S }, { merge: true }).catch(()=>{}); }
+    }catch(e){}
   };
 
   const emailEl = document.getElementById('authEmail');
@@ -434,38 +453,38 @@ window.localSignup = async function(){
   const logoutBtn = document.getElementById('logout');
   const msg = document.getElementById('authMsg');
 
+  setPersistence(auth, browserLocalPersistence).catch(()=>{});
+
   loginBtn.onclick = null; signupBtn.onclick = null;
 
   loginBtn.addEventListener('click', async () => {
     const email = (emailEl?.value||'').trim();
     const pass  = passEl?.value||'';
     if (!email) { window.localLogin && window.localLogin(); return; }
-    try{
-      await signInWithEmailAndPassword(auth, email, pass);
-      await cloudLoadAndSubscribe();
-      document.getElementById('auth')?.remove();
-    }catch(e){ msg.textContent = e.message || 'เข้าสู่ระบบไม่สำเร็จ'; }
+    try{ await signInWithEmailAndPassword(auth, email, pass); await cloudLoadAndSubscribe(); }
+    catch(e){ msg.textContent = e.message || 'เข้าสู่ระบบไม่สำเร็จ'; }
   });
 
   signupBtn.addEventListener('click', async () => {
     const email = (emailEl?.value||'').trim();
     const pass  = passEl?.value||'';
     if (!email) { window.localSignup && window.localSignup(); return; }
-    try{
-      await createUserWithEmailAndPassword(auth, email, pass);
-      await cloudLoadAndSubscribe();
-      document.getElementById('auth')?.remove();
-    }catch(e){ msg.textContent = e.message || 'สมัครไม่สำเร็จ'; }
+    try{ await createUserWithEmailAndPassword(auth, email, pass); await cloudLoadAndSubscribe(); }
+    catch(e){ msg.textContent = e.message || 'สมัครไม่สำเร็จ'; }
   });
 
   logoutBtn?.addEventListener('click', async () => {
     if (unsubscribe) { unsubscribe(); unsubscribe=null; }
     if (auth.currentUser) await signOut(auth);
+    const modal = document.getElementById('auth'); modal?.classList?.remove('hidden');
   });
 
   onAuthStateChanged(auth, async (user) => {
+    authReady = true;
     if (user) await cloudLoadAndSubscribe();
+    else if (!window.session || !window.session()) document.getElementById('auth')?.classList.remove('hidden');
   });
+  setTimeout(()=>{ if(!authReady && (!window.session || !window.session())) document.getElementById('auth')?.classList.remove('hidden'); }, 600);
 </script>
 </body>
 </html>
