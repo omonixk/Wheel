@@ -29,15 +29,23 @@
   .progress{height:10px;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:#0001}
   .progress>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#2ea36a)}
   svg{width:100%;height:240px;display:block}
-  /* auth (ย่อ) */ .auth{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999}
+  .auth{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999}
   .auth>div{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;min-width:320px}
 </style>
 </head>
 <body>
 <!-- ===== AUTH ===== -->
 <div id="auth" class="auth hidden"><div>
-  <div class="row"><input id="authUser" placeholder="ชื่อผู้ใช้ (a-z0-9_)"><input id="authPass" type="password" placeholder="รหัสผ่าน (≥6)"></div>
-  <div class="row" style="margin-top:8px"><button id="authLogin" class="accent">เข้าสู่ระบบ</button><button id="authSignup">สมัครสมาชิก</button><button id="authGuest">Guest</button></div>
+  <div class="row">
+    <input id="authEmail" type="email" placeholder="อีเมล (เพื่อซิงก์ข้ามเครื่อง)">
+    <input id="authUser" placeholder="ชื่อผู้ใช้ (a-z0-9_)">
+    <input id="authPass" type="password" placeholder="รหัสผ่าน (≥6)">
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="authLogin" class="accent">เข้าสู่ระบบ</button>
+    <button id="authSignup">สมัครสมาชิก</button>
+    <button id="authGuest">Guest</button>
+  </div>
   <div id="authMsg" class="note" style="margin-top:6px"></div>
 </div></div>
 
@@ -152,7 +160,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 const ym=d=>d.slice(0,7); const sum=a=>a.reduce((x,y)=>x+y,0); const byMonth=(arr,m)=>arr.filter(t=>ym(t.date)===m);
 const uid=()=>crypto?.randomUUID?crypto.randomUUID():'id-'+Math.random().toString(36).slice(2)+Date.now();
 
-/* ---------- storage & auth ---------- */
+/* ---------- storage & auth (local) ---------- */
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}, save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const USERS='bp_users', SESSION='bp_session';
 async function hash(s){ if(crypto?.subtle?.digest){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return btoa(String.fromCharCode(...new Uint8Array(b))); } return s }
@@ -166,9 +174,7 @@ let CUR=session(), KEYS=null, S=null;
 const keys=u=>({tx:`bp:${u}:tx`, cats:`bp:${u}:cats`, goals:`bp:${u}:goals`, settings:`bp:${u}:settings`});
 function normalizeCats(arr){
   const out=(arr||[]).map(x=> typeof x==='string' ? {name:x, budget:0} : {name:String(x.name), budget:Number(x.budget||0)});
-  // บังคับให้มีหมวดพื้นฐานเสมอ
   DEFAULT_CAT_NAMES.forEach(n=>{ if(!out.find(c=>c.name===n)) out.push({name:n,budget:0}); });
-  // กันซ้ำตามชื่อ
   const seen=new Set(); return out.filter(c=>!seen.has(c.name) && seen.add(c.name));
 }
 function bootUser(u){
@@ -189,12 +195,9 @@ const mp=$('#monthPicker'); mp.value=new Date().toISOString().slice(0,7); mp.onc
 /* ---------- categories ---------- */
 function fillCategorySelects(){
   const opts=S.cats.map(c=>`<option>${c.name}</option>`).join('');
-  // รายรับ: รวม incomeTags + มีตัวเลือกสร้างใหม่
   const incomeOpts = ['อื่นๆ', ...S.settings.incomeTags].map(n=>`<option>${n}</option>`).join('') + `<option value="__new__">อื่นๆ (เพิ่มใหม่…)</option>`;
   $('#dIncomeCat').innerHTML=incomeOpts;
-  // รายจ่าย: ใช้หมวดงบ + ตัวเลือกสร้างใหม่
   $('#dExpenseCat').innerHTML=opts+`<option value="__new__">อื่นๆ (เพิ่มใหม่…)</option>`;
-  // ตัวกรอง
   $('#filterCat').innerHTML=`<option value="">ทุกหมวด</option>`+opts;
 }
 function renderCats(){
@@ -218,7 +221,7 @@ function renderCats(){
 }
 $('#addCat').onclick=()=>{ const n=$('#newCat').value.trim(); if(!n) return; if(S.cats.find(c=>c.name===n)){alert('มีหมวดนี้แล้ว');return} const budget=+($('#newBudget').value||0); S.cats.push({name:n,budget}); saveAll(); $('#newCat').value=''; $('#newBudget').value=''; fillCategorySelects(); renderCats(); renderAll(); };
 
-/* ---------- transactions (one-shot + เพิ่มใหม่แบบแยกตรรกะ) ---------- */
+/* ---------- transactions ---------- */
 $('#dDate').value=today();
 $('#dIncomeCat').addEventListener('change',()=>$('#newIncomeTag').classList.toggle('hidden',$('#dIncomeCat').value!=='__new__'));
 $('#dExpenseCat').addEventListener('change',()=>$('#newExpenseCat').classList.toggle('hidden',$('#dExpenseCat').value!=='__new__'));
@@ -226,14 +229,12 @@ $('#dExpenseCat').addEventListener('change',()=>$('#newExpenseCat').classList.to
 $('#saveDay').onclick=()=>{
   const date=$('#dDate').value||today();
   const inc=+($('#dIncome').value||0), exp=+($('#dExpense').value||0), note=$('#dNote').value.trim();
-  // รายรับ: เพิ่ม tag ใหม่ (ไม่แตะ categories)
   let incCat=$('#dIncomeCat').value;
   if(inc>0 && incCat==='__new__'){
     const tag=($('#newIncomeTag').value||'').trim(); if(!tag){alert('กรอกชื่อป้ายรายรับใหม่');return}
     if(!S.settings.incomeTags.includes(tag)) S.settings.incomeTags.push(tag);
     incCat=tag; save(KEYS.settings,S.settings);
   }
-  // รายจ่าย: เพิ่ม "หมวด" ใหม่จริง ๆ
   let expCat=$('#dExpenseCat').value;
   if(exp>0 && expCat==='__new__'){
     const name=($('#newExpenseCat').value||'').trim(); if(!name){alert('กรอกชื่อหมวดรายจ่ายใหม่');return}
@@ -246,7 +247,8 @@ $('#saveDay').onclick=()=>{
   if(!add.length){ alert('กรอกอย่างน้อย 1 ช่อง: รายรับ หรือ รายจ่าย'); return; }
   S.tx.push(...add); saveAll();
   $('#dIncome').value=''; $('#dExpense').value=''; $('#dNote').value='';
-  $('#newIncomeTag').value=''; $('#newExpenseCat').value=''; $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
+  $('#newIncomeTag').value=''; $('#newExpenseCat').value='';
+  $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
   fillCategorySelects(); renderAll();
 };
 
@@ -265,7 +267,7 @@ function renderTable(){
 }
 $('#search').oninput=renderTable; $('#filterType').onchange=renderTable; $('#filterCat').onchange=renderTable;
 
-/* ---------- goals (ย่อ) ---------- */
+/* ---------- goals ---------- */
 $('#addGoal').onclick=()=>{ const n=$('#goalName').value.trim(), t=+($('#goalTarget').value||0), d=$('#goalDue').value; if(!n||!t||!d){alert('กรอกให้ครบ');return} S.goals.push({id:uid(),name:n,target:t,saved:0,due:d}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
 function daysBetween(a,b){return Math.ceil((b-a)/(1000*60*60*24))}
 function renderGoals(){
@@ -310,7 +312,7 @@ function renderBars(){
   const axis=document.createElementNS('http://www.w3.org/2000/svg','line'); axis.setAttribute('x1',p); axis.setAttribute('x2',w-p); axis.setAttribute('y1',h-p); axis.setAttribute('y2',h-p); axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','.3'); svg.appendChild(axis);
 }
 
-/* ---------- analysis (เฉลี่ย/วัน = distinct days ที่มีรายจ่ายจริง) ---------- */
+/* ---------- analysis ---------- */
 function renderAnalysis(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const expenseDays=new Set(txm.filter(t=>t.type==='expense').map(t=>t.date)).size || new Set(txm.map(t=>t.date)).size;
@@ -321,10 +323,8 @@ function renderAnalysis(){
   const burn = expenseDays ? exp/expenseDays : 0;
   const forecast = Math.round(burn * daysInMonth);
   $('#kpiLastDay').textContent = lastDay||'–'; $('#kpiRemainDays').textContent = remain; $('#kpiBurn').textContent = fmt(Math.round(burn)); $('#kpiForecast').textContent = fmt(forecast);
-  // Top Cats
   const byCat={}; txm.filter(t=>t.type==='expense').forEach(t=>byCat[t.category]=(byCat[t.category]||0)+t.amount);
   const wrap=$('#topCats'); wrap.innerHTML=''; Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,6).forEach(([c,v])=>{ const d=document.createElement('div'); d.className='kpi'; d.innerHTML=`<div>${c}</div><strong>${fmt(v)}</strong>`; wrap.appendChild(d); });
-  // history 12m
   const svg=$('#hist12'); svg.innerHTML=''; const base=new Date(m+'-01'); const months=[]; for(let i=11;i>=0;i--){ const d=new Date(base.getFullYear(),base.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`) }
   const data=months.map(mm=>({inc:sum(byMonth(S.tx,mm).filter(t=>t.type==='income').map(t=>t.amount)),exp:sum(byMonth(S.tx,mm).filter(t=>t.type==='expense').map(t=>t.amount))}));
   const w=svg.clientWidth||600,h=240,p=28,bw=(w-p*2)/(months.length*2+months.length*.5),max=Math.max(1,...data.flatMap(x=>[x.inc,x.exp]));
@@ -354,6 +354,89 @@ function renderAll(){ if(!CUR) return; fillCategorySelects(); renderKPIs(); rend
       S.tx.push({id:uid(),date:d.toISOString().slice(0,10),type:inc?'income':'expense',amount:inc?rnd(200,2000):rnd(20,500),category:inc?(S.settings.incomeTags[0]||'อื่นๆ'):cats[rnd(0,cats.length-1)],note:inc?'รายได้':'ค่าใช้จ่ายสุ่ม'}); }
     saveAll(); renderAll(); };
 })();
+</script>
+
+<!-- ===== Firebase: Auth + Firestore sync (ซิงก์ข้ามเครื่อง) ===== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+  // ใช้ config ของโปรเจกต์คุณ
+  const firebaseConfig = {
+    apiKey: "AIzaSyAahqJ76hXAaPhUbAR7R5Jouj1J3DDJ8J4",
+    authDomain: "financial-dfb82.firebaseapp.com",
+    projectId: "financial-dfb82",
+    storageBucket: "financial-dfb82.firebasestorage.app",
+    messagingSenderId: "646408484452",
+    appId: "1:646408484452:web:0d5f93f449b061c6a7d171",
+    measurementId: "G-XWJKFNP9YF"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  const userDoc = () => doc(db, "users", auth.currentUser.uid, "app", "state");
+
+  async function cloudLoadAndSubscribe() {
+    if (!auth.currentUser) return;
+    const snap = await getDoc(userDoc());
+    if (snap.exists()) {
+      const remote = snap.data();
+      if (remote?.S) { window.S = remote.S; window.saveAll(); window.renderAll(); }
+    } else {
+      await setDoc(userDoc(), { S: window.S });
+    }
+    onSnapshot(userDoc(), d => {
+      if (!d.exists()) return;
+      const remote = d.data();
+      if (remote?.S) { window.S = remote.S; window.saveAll(); window.renderAll(); }
+    });
+  }
+
+  // ทำให้ saveAll() อัปเดตขึ้น Firestore ทุกครั้ง
+  const _saveAllOrig = window.saveAll;
+  window.saveAll = function(){
+    _saveAllOrig();
+    if (auth.currentUser) setDoc(userDoc(), { S: window.S }, { merge: true });
+  };
+
+  // ปุ่มสมัคร/ล็อกอิน: ถ้ามีอีเมล -> ใช้ Firebase, ถ้าไม่มีก็โหมดออฟไลน์
+  const emailEl = document.getElementById('authEmail');
+  const passEl  = document.getElementById('authPass');
+  const loginBtn  = document.getElementById('authLogin');
+  const signupBtn = document.getElementById('authSignup');
+  const logoutBtn = document.getElementById('logout');
+  const msg = document.getElementById('authMsg');
+
+  signupBtn?.addEventListener('click', async () => {
+    const email = (emailEl?.value||'').trim();
+    const pass  = passEl?.value||'';
+    if (!email) return; // ไม่กรอกอีเมล = ออฟไลน์
+    try{
+      await createUserWithEmailAndPassword(auth, email, pass);
+      await cloudLoadAndSubscribe();
+    }catch(e){ msg.textContent = e.message || 'สมัครไม่สำเร็จ'; }
+  });
+
+  loginBtn?.addEventListener('click', async () => {
+    const email = (emailEl?.value||'').trim();
+    const pass  = passEl?.value||'';
+    if (!email) return; // ไม่กรอกอีเมล = ออฟไลน์
+    try{
+      await signInWithEmailAndPassword(auth, email, pass);
+      await cloudLoadAndSubscribe();
+    }catch(e){ msg.textContent = e.message || 'เข้าสู่ระบบไม่สำเร็จ'; }
+  });
+
+  logoutBtn?.addEventListener('click', async () => {
+    if (auth.currentUser) await signOut(auth);
+  });
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) await cloudLoadAndSubscribe();
+  });
 </script>
 </body>
 </html>
