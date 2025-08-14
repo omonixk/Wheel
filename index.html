@@ -152,23 +152,21 @@
   </section>
 </main>
 
+<!-- ========== สคริปต์หลัก (UI + localStorage) ========== -->
 <script>
-/* ---------- helpers ---------- */
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const fmt=n=>(n||0).toLocaleString('th-TH',{maximumFractionDigits:0});
 const today=()=>new Date().toISOString().slice(0,10);
 const ym=d=>d.slice(0,7); const sum=a=>a.reduce((x,y)=>x+y,0); const byMonth=(arr,m)=>arr.filter(t=>ym(t.date)===m);
 const uid=()=>crypto?.randomUUID?crypto.randomUUID():'id-'+Math.random().toString(36).slice(2)+Date.now();
 
-/* ---------- storage & auth (local) ---------- */
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}, save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const USERS='bp_users', SESSION='bp_session';
 async function hash(s){ if(crypto?.subtle?.digest){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return btoa(String.fromCharCode(...new Uint8Array(b))); } return s }
-async function signup(u,p){const us=load(USERS,{}); if(us[u])throw Error('มีผู้ใช้นี้แล้ว'); if(!/^[a-z0-9_]{3,20}$/.test(u))throw Error('ชื่อผู้ใช้ไม่ถูกต้อง'); if((p||'').length<6)throw Error('รหัสสั้นไป'); us[u]={h:await hash(p)}; save(USERS,us); save(SESSION,{u});}
-async function login(u,p){const us=load(USERS,{}); if(!us[u])throw Error('ไม่พบบัญชี'); if(us[u].h!==await hash(p))throw Error('รหัสไม่ถูกต้อง'); save(SESSION,{u});}
+async function _signupLocal(u,p){const us=load(USERS,{}); if(us[u])throw Error('มีผู้ใช้นี้แล้ว'); if(!/^[a-z0-9_]{3,20}$/.test(u))throw Error('ชื่อผู้ใช้ไม่ถูกต้อง'); if((p||'').length<6)throw Error('รหัสสั้นไป'); us[u]={h:await hash(p)}; save(USERS,us); save(SESSION,{u});}
+async function _loginLocal(u,p){const us=load(USERS,{}); if(!us[u])throw Error('ไม่พบบัญชี'); if(us[u].h!==await hash(p))throw Error('รหัสไม่ถูกต้อง'); save(SESSION,{u});}
 function session(){return load(SESSION,null)?.u||null} function logout(){localStorage.removeItem(SESSION); location.reload()}
 
-/* ---------- per-user data ---------- */
 const DEFAULT_CAT_NAMES=['อาหาร','เดินทาง','บิลรายเดือน','บันเทิง','อื่นๆ'];
 let CUR=session(), KEYS=null, S=null;
 const keys=u=>({tx:`bp:${u}:tx`, cats:`bp:${u}:cats`, goals:`bp:${u}:goals`, settings:`bp:${u}:settings`});
@@ -177,22 +175,36 @@ function normalizeCats(arr){
   DEFAULT_CAT_NAMES.forEach(n=>{ if(!out.find(c=>c.name===n)) out.push({name:n,budget:0}); });
   const seen=new Set(); return out.filter(c=>!seen.has(c.name) && seen.add(c.name));
 }
+function ensureState(){
+  if(!S){
+    S={ tx:[], cats:normalizeCats(DEFAULT_CAT_NAMES), goals:[], settings:{incomeTags:[]} };
+  }else{
+    S.cats = normalizeCats(S.cats||DEFAULT_CAT_NAMES);
+    S.settings = Object.assign({incomeTags:[]}, S.settings||{});
+    S.tx = Array.isArray(S.tx)?S.tx:[];
+    S.goals = Array.isArray(S.goals)?S.goals:[];
+  }
+}
 function bootUser(u){
   CUR=u; KEYS=keys(u);
-  const cats=normalizeCats(load(KEYS.cats, DEFAULT_CAT_NAMES));
-  const settings=Object.assign({incomeTags:[]}, load(KEYS.settings, {}));
-  S={ tx:load(KEYS.tx,[]), cats, goals:load(KEYS.goals,[]), settings };
-  save(KEYS.cats,S.cats); save(KEYS.settings,S.settings);
+  S = load(KEYS.tx,null)==null && load(KEYS.cats,null)==null && load(KEYS.goals,null)==null
+      ? null
+      : { tx:load(KEYS.tx,[]), cats:normalizeCats(load(KEYS.cats, DEFAULT_CAT_NAMES)), goals:load(KEYS.goals,[]), settings:Object.assign({incomeTags:[]}, load(KEYS.settings, {})) };
+  ensureState();
+  saveAll();
   $('#currentUser').textContent='@'+u; $('#currentUser').classList.remove('hidden'); $('#logout').classList.remove('hidden');
 }
-function saveAll(){ save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings); }
+function saveAll(){
+  try{
+    ensureState();
+    save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings);
+  }catch(e){ console.warn('local save error:', e); }
+}
 
-/* ---------- header / tabs ---------- */
 $$('.tab').forEach(t=>t.onclick=()=>{ $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); ['dashboard','transactions','categories','goals','analysis','settings'].forEach(id=>$('#'+id).classList.toggle('hidden', id!==t.dataset.tab)); renderAll(); });
 $('#logout').onclick=logout;
 const mp=$('#monthPicker'); mp.value=new Date().toISOString().slice(0,7); mp.onchange=renderAll;
 
-/* ---------- categories ---------- */
 function fillCategorySelects(){
   const opts=S.cats.map(c=>`<option>${c.name}</option>`).join('');
   const incomeOpts = ['อื่นๆ', ...S.settings.incomeTags].map(n=>`<option>${n}</option>`).join('') + `<option value="__new__">อื่นๆ (เพิ่มใหม่…)</option>`;
@@ -221,12 +233,12 @@ function renderCats(){
 }
 $('#addCat').onclick=()=>{ const n=$('#newCat').value.trim(); if(!n) return; if(S.cats.find(c=>c.name===n)){alert('มีหมวดนี้แล้ว');return} const budget=+($('#newBudget').value||0); S.cats.push({name:n,budget}); saveAll(); $('#newCat').value=''; $('#newBudget').value=''; fillCategorySelects(); renderCats(); renderAll(); };
 
-/* ---------- transactions ---------- */
 $('#dDate').value=today();
 $('#dIncomeCat').addEventListener('change',()=>$('#newIncomeTag').classList.toggle('hidden',$('#dIncomeCat').value!=='__new__'));
 $('#dExpenseCat').addEventListener('change',()=>$('#newExpenseCat').classList.toggle('hidden',$('#dExpenseCat').value!=='__new__'));
 
 $('#saveDay').onclick=()=>{
+  ensureState();
   const date=$('#dDate').value||today();
   const inc=+($('#dIncome').value||0), exp=+($('#dExpense').value||0), note=$('#dNote').value.trim();
   let incCat=$('#dIncomeCat').value;
@@ -247,8 +259,7 @@ $('#saveDay').onclick=()=>{
   if(!add.length){ alert('กรอกอย่างน้อย 1 ช่อง: รายรับ หรือ รายจ่าย'); return; }
   S.tx.push(...add); saveAll();
   $('#dIncome').value=''; $('#dExpense').value=''; $('#dNote').value='';
-  $('#newIncomeTag').value=''; $('#newExpenseCat').value='';
-  $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
+  $('#newIncomeTag').value=''; $('#newExpenseCat').value=''; $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
   fillCategorySelects(); renderAll();
 };
 
@@ -267,8 +278,7 @@ function renderTable(){
 }
 $('#search').oninput=renderTable; $('#filterType').onchange=renderTable; $('#filterCat').onchange=renderTable;
 
-/* ---------- goals ---------- */
-$('#addGoal').onclick=()=>{ const n=$('#goalName').value.trim(), t=+($('#goalTarget').value||0), d=$('#goalDue').value; if(!n||!t||!d){alert('กรอกให้ครบ');return} S.goals.push({id:uid(),name:n,target:t,saved:0,due:d}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
+$('#addGoal').onclick=()=>{ ensureState(); const n=$('#goalName').value.trim(), t=+($('#goalTarget').value||0), d=$('#goalDue').value; if(!n||!t||!d){alert('กรอกให้ครบ');return} S.goals.push({id:uid(),name:n,target:t,saved:0,due:d}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
 function daysBetween(a,b){return Math.ceil((b-a)/(1000*60*60*24))}
 function renderGoals(){
   const wrap=$('#goalList'); wrap.innerHTML=''; const todayDate=new Date(today());
@@ -284,7 +294,6 @@ function renderGoals(){
   $$('#goalList [data-del]').forEach(b=>b.onclick=()=>{ const id=b.dataset.del; S.goals=S.goals.filter(x=>x.id!==id); saveAll(); renderGoals(); });
 }
 
-/* ---------- KPIs & charts ---------- */
 function renderKPIs(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const inc=sum(txm.filter(t=>t.type==='income').map(t=>t.amount));
@@ -312,7 +321,6 @@ function renderBars(){
   const axis=document.createElementNS('http://www.w3.org/2000/svg','line'); axis.setAttribute('x1',p); axis.setAttribute('x2',w-p); axis.setAttribute('y1',h-p); axis.setAttribute('y2',h-p); axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','.3'); svg.appendChild(axis);
 }
 
-/* ---------- analysis ---------- */
 function renderAnalysis(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const expenseDays=new Set(txm.filter(t=>t.type==='expense').map(t=>t.date)).size || new Set(txm.map(t=>t.date)).size;
@@ -333,36 +341,42 @@ function renderAnalysis(){
     const re=document.createElementNS('http://www.w3.org/2000/svg','rect'); re.setAttribute('x',x+bw+2); re.setAttribute('y',h-p-he); re.setAttribute('width',bw); re.setAttribute('height',he); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.75'); svg.appendChild(ri); svg.appendChild(re); });
 }
 
-/* ---------- export / import ---------- */
 $('#exportJson').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({user:CUR,S})],{type:'application/json'})); a.download=`budgetpro_${CUR}.json`; a.click(); };
 $('#exportCsv').onclick=()=>{ const rows=[['date','type','category','amount','note']].concat(S.tx.map(t=>[t.date,t.type,t.category,t.amount,t.note||''])); const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`transactions_${CUR}.csv`; a.click(); };
-$('#importJson').onclick=()=>{ const f=$('#importFile').files?.[0]; if(!f){alert('เลือกไฟล์');return} const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.S){ S=o.S; S.cats=normalizeCats(S.cats); saveAll(); } else alert('ไฟล์ไม่ถูกต้อง') }catch{ alert('อ่านไฟล์ไม่สำเร็จ') } renderAll(); }; r.readAsText(f); };
+$('#importJson').onclick=()=>{ const f=$('#importFile').files?.[0]; if(!f){alert('เลือกไฟล์');return} const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.S){ S=o.S; ensureState(); saveAll(); } else alert('ไฟล์ไม่ถูกต้อง') }catch{ alert('อ่านไฟล์ไม่สำเร็จ') } renderAll(); }; r.readAsText(f); };
 $('#resetAll').onclick=()=>{ if(!confirm('ล้างทั้งหมด?'))return; S={tx:[],cats:normalizeCats(DEFAULT_CAT_NAMES),goals:[],settings:{incomeTags:[]}}; saveAll(); renderAll(); };
 
-/* ---------- orchestrator ---------- */
-function renderAll(){ if(!CUR) return; fillCategorySelects(); renderKPIs(); renderPie(); renderBars(); renderTable(); renderCats(); renderGoals(); renderAnalysis(); }
+function renderAll(){ if(!CUR) return; ensureState(); fillCategorySelects(); renderKPIs(); renderPie(); renderBars(); renderTable(); renderCats(); renderGoals(); renderAnalysis(); }
 
-/* ---------- auth boot ---------- */
+window.localLogin = async function(){
+  try{
+    await _loginLocal($('#authUser').value.trim(), $('#authPass').value);
+    bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll();
+  }catch(e){ $('#authMsg').textContent=e.message }
+};
+window.localSignup = async function(){
+  try{
+    await _signupLocal($('#authUser').value.trim(), $('#authPass').value);
+    bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll();
+  }catch(e){ $('#authMsg').textContent=e.message }
+};
+
 (function(){
   if(!CUR){ $('#auth').classList.remove('hidden'); }
   else { bootUser(CUR); renderAll(); }
-  $('#authLogin').onclick=async()=>{ try{ await login($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
-  $('#authSignup').onclick=async()=>{ try{ await signup($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
-  $('#authGuest').onclick=()=>{ bootUser('guest'); $('#auth').remove(); renderAll(); };
-  $('#addDemo').onclick=()=>{ const m=mp.value; const [y,mm]=m.split('-').map(Number); const cats=S.cats.map(c=>c.name); function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a}
+  $('#addDemo').onclick=()=>{ ensureState(); const m=mp.value; const [y,mm]=m.split('-').map(Number); const cats=S.cats.map(c=>c.name); function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a}
     for(let i=0;i<20;i++){ const d=new Date(y,mm-1,rnd(1,Math.min(28,new Date(y,mm,0).getDate()))); const inc=rnd(0,1)===1;
       S.tx.push({id:uid(),date:d.toISOString().slice(0,10),type:inc?'income':'expense',amount:inc?rnd(200,2000):rnd(20,500),category:inc?(S.settings.incomeTags[0]||'อื่นๆ'):cats[rnd(0,cats.length-1)],note:inc?'รายได้':'ค่าใช้จ่ายสุ่ม'}); }
     saveAll(); renderAll(); };
 })();
 </script>
 
-<!-- ===== Firebase: Auth + Firestore sync (ซิงก์ข้ามเครื่อง) ===== -->
+<!-- ========== Firebase: Auth + Firestore sync ========== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
   import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-  // ใช้ config ของโปรเจกต์คุณ
   const firebaseConfig = {
     apiKey: "AIzaSyAahqJ76hXAaPhUbAR7R5Jouj1J3DDJ8J4",
     authDomain: "financial-dfb82.firebaseapp.com",
@@ -378,31 +392,41 @@ function renderAll(){ if(!CUR) return; fillCategorySelects(); renderKPIs(); rend
   const db   = getFirestore(app);
 
   const userDoc = () => doc(db, "users", auth.currentUser.uid, "app", "state");
+  let unsubscribe = null;
+
+  function ensureState(){ if(!window.S){ window.S={tx:[],cats:['อาหาร','เดินทาง','บิลรายเดือน','บันเทิง','อื่นๆ'].map(n=>({name:n,budget:0})),goals:[],settings:{incomeTags:[]}}; } }
 
   async function cloudLoadAndSubscribe() {
     if (!auth.currentUser) return;
-    const snap = await getDoc(userDoc());
-    if (snap.exists()) {
-      const remote = snap.data();
-      if (remote?.S) { window.S = remote.S; window.saveAll(); window.renderAll(); }
-    } else {
-      await setDoc(userDoc(), { S: window.S });
+    ensureState();
+    try{
+      const snap = await getDoc(userDoc());
+      if (snap.exists()) {
+        const remote = snap.data();
+        if (remote?.S) { window.S = remote.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
+      } else {
+        await setDoc(userDoc(), { S: window.S });
+      }
+      if (unsubscribe) { unsubscribe(); unsubscribe=null; }
+      unsubscribe = onSnapshot(userDoc(), d => {
+        if (!d.exists()) return;
+        const remote = d.data();
+        if (remote?.S) { window.S = remote.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
+      });
+    }catch(e){
+      console.error('cloudLoad error', e);
+      const m=document.getElementById('authMsg'); if(m) m.textContent=e.message||'เชื่อมต่อคลาวด์ผิดพลาด';
     }
-    onSnapshot(userDoc(), d => {
-      if (!d.exists()) return;
-      const remote = d.data();
-      if (remote?.S) { window.S = remote.S; window.saveAll(); window.renderAll(); }
-    });
   }
 
-  // ทำให้ saveAll() อัปเดตขึ้น Firestore ทุกครั้ง
   const _saveAllOrig = window.saveAll;
   window.saveAll = function(){
-    _saveAllOrig();
-    if (auth.currentUser) setDoc(userDoc(), { S: window.S }, { merge: true });
+    try{
+      _saveAllOrig && _saveAllOrig();
+      if (auth.currentUser) { ensureState(); setDoc(userDoc(), { S: window.S }, { merge: true }).catch(e=>console.warn('sync error',e)); }
+    }catch(e){ console.warn('saveAll hook error', e); }
   };
 
-  // ปุ่มสมัคร/ล็อกอิน: ถ้ามีอีเมล -> ใช้ Firebase, ถ้าไม่มีก็โหมดออฟไลน์
   const emailEl = document.getElementById('authEmail');
   const passEl  = document.getElementById('authPass');
   const loginBtn  = document.getElementById('authLogin');
@@ -410,27 +434,32 @@ function renderAll(){ if(!CUR) return; fillCategorySelects(); renderKPIs(); rend
   const logoutBtn = document.getElementById('logout');
   const msg = document.getElementById('authMsg');
 
-  signupBtn?.addEventListener('click', async () => {
-    const email = (emailEl?.value||'').trim();
-    const pass  = passEl?.value||'';
-    if (!email) return; // ไม่กรอกอีเมล = ออฟไลน์
-    try{
-      await createUserWithEmailAndPassword(auth, email, pass);
-      await cloudLoadAndSubscribe();
-    }catch(e){ msg.textContent = e.message || 'สมัครไม่สำเร็จ'; }
-  });
+  loginBtn.onclick = null; signupBtn.onclick = null;
 
-  loginBtn?.addEventListener('click', async () => {
+  loginBtn.addEventListener('click', async () => {
     const email = (emailEl?.value||'').trim();
     const pass  = passEl?.value||'';
-    if (!email) return; // ไม่กรอกอีเมล = ออฟไลน์
+    if (!email) { window.localLogin && window.localLogin(); return; }
     try{
       await signInWithEmailAndPassword(auth, email, pass);
       await cloudLoadAndSubscribe();
+      document.getElementById('auth')?.remove();
     }catch(e){ msg.textContent = e.message || 'เข้าสู่ระบบไม่สำเร็จ'; }
   });
 
+  signupBtn.addEventListener('click', async () => {
+    const email = (emailEl?.value||'').trim();
+    const pass  = passEl?.value||'';
+    if (!email) { window.localSignup && window.localSignup(); return; }
+    try{
+      await createUserWithEmailAndPassword(auth, email, pass);
+      await cloudLoadAndSubscribe();
+      document.getElementById('auth')?.remove();
+    }catch(e){ msg.textContent = e.message || 'สมัครไม่สำเร็จ'; }
+  });
+
   logoutBtn?.addEventListener('click', async () => {
+    if (unsubscribe) { unsubscribe(); unsubscribe=null; }
     if (auth.currentUser) await signOut(auth);
   });
 
