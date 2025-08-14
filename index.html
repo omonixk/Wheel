@@ -154,12 +154,14 @@
 
 <!-- ========== สคริปต์หลัก (UI + localStorage) ========== -->
 <script>
+/* ---------- helpers ---------- */
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const fmt=n=>(n||0).toLocaleString('th-TH',{maximumFractionDigits:0});
 const today=()=>new Date().toISOString().slice(0,10);
 const ym=d=>d.slice(0,7); const sum=a=>a.reduce((x,y)=>x+y,0); const byMonth=(arr,m)=>arr.filter(t=>ym(t.date)===m);
 const uid=()=>crypto?.randomUUID?crypto.randomUUID():'id-'+Math.random().toString(36).slice(2)+Date.now();
 
+/* ---------- storage & auth (local fallback) ---------- */
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}}, save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const USERS='bp_users', SESSION='bp_session';
 async function hash(s){ if(crypto?.subtle?.digest){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return btoa(String.fromCharCode(...new Uint8Array(b))); } return s }
@@ -167,6 +169,7 @@ async function _signupLocal(u,p){const us=load(USERS,{}); if(us[u])throw Error('
 async function _loginLocal(u,p){const us=load(USERS,{}); if(!us[u])throw Error('ไม่พบบัญชี'); if(us[u].h!==await hash(p))throw Error('รหัสไม่ถูกต้อง'); save(SESSION,{u});}
 function session(){return load(SESSION,null)?.u||null} function logout(){localStorage.removeItem(SESSION); location.reload()}
 
+/* ---------- per-user data ---------- */
 const DEFAULT_CAT_NAMES=['อาหาร','เดินทาง','บิลรายเดือน','บันเทิง','อื่นๆ'];
 let CUR=session(), KEYS=null, S=null;
 const keys=u=>({tx:`bp:${u}:tx`, cats:`bp:${u}:cats`, goals:`bp:${u}:goals`, settings:`bp:${u}:settings`});
@@ -185,34 +188,27 @@ function ensureState(){
     S.goals = Array.isArray(S.goals)?S.goals:[];
   }
 }
-function bootUser(u){
-  CUR=u; KEYS=keys(u);
-  S = load(KEYS.tx,null)==null && load(KEYS.cats,null)==null && load(KEYS.goals,null)==null
-      ? null
-      : { tx:load(KEYS.tx,[]), cats:normalizeCats(load(KEYS.cats, DEFAULT_CAT_NAMES)), goals:load(KEYS.goals,[]), settings:Object.assign({incomeTags:[]}, load(KEYS.settings, {})) };
-  ensureState();
-  saveAll();
-  setHeaderUser('@'+u);
-}
-function saveAll(){ try{ ensureState(); save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings);}catch(e){} }
-
-/* ===== header / tabs ===== */
-$$('.tab').forEach(t=>t.onclick=()=>{ $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); ['dashboard','transactions','categories','goals','analysis','settings'].forEach(id=>$('#'+id).classList.toggle('hidden', id!==t.dataset.tab)); renderAll(); });
-$('#logout').onclick=logout;
-const mp=$('#monthPicker'); mp.value=new Date().toISOString().slice(0,7); mp.onchange=renderAll;
-
-/* ===== helpers UI header & month jump (เพิ่มใหม่) ===== */
 function setHeaderUser(label){
   const el = document.getElementById('currentUser');
   if(label){ el.textContent = label; el.classList.remove('hidden'); }
   document.getElementById('logout').classList.remove('hidden');
 }
-function jumpToMonthOf(dateStr){
-  const m = dateStr.slice(0,7);
-  if(mp.value !== m) mp.value = m;
+function bootUser(u){
+  CUR=u; KEYS=keys(u);
+  S = load(KEYS.tx,null)==null && load(KEYS.cats,null)==null && load(KEYS.goals,null)==null
+      ? null
+      : { tx:load(KEYS.tx,[]), cats:normalizeCats(load(KEYS.cats, DEFAULT_CAT_NAMES)), goals:load(KEYS.goals,[]), settings:Object.assign({incomeTags:[]}, load(KEYS.settings, {})) };
+  ensureState(); saveAll(); setHeaderUser('@'+u);
 }
+function saveAll(){ try{ ensureState(); save(KEYS.tx,S.tx); save(KEYS.cats,S.cats); save(KEYS.goals,S.goals); save(KEYS.settings,S.settings);}catch(e){} }
+function jumpToMonthOf(dateStr){ const m = dateStr.slice(0,7); const mp = document.getElementById('monthPicker'); if(mp.value !== m) mp.value = m; }
 
-/* ===== categories ===== */
+/* ---------- header / tabs ---------- */
+$$('.tab').forEach(t=>t.onclick=()=>{ $$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); ['dashboard','transactions','categories','goals','analysis','settings'].forEach(id=>$('#'+id).classList.toggle('hidden', id!==t.dataset.tab)); renderAll(); });
+$('#logout').onclick=logout;
+const mp=$('#monthPicker'); mp.value=new Date().toISOString().slice(0,7); mp.onchange=renderAll;
+
+/* ---------- categories ---------- */
 function fillCategorySelects(){
   const opts=S.cats.map(c=>`<option>${c.name}</option>`).join('');
   const incomeOpts = ['อื่นๆ', ...S.settings.incomeTags].map(n=>`<option>${n}</option>`).join('') + `<option value="__new__">อื่นๆ (เพิ่มใหม่…)</option>`;
@@ -241,7 +237,7 @@ function renderCats(){
 }
 $('#addCat').onclick=()=>{ const n=$('#newCat').value.trim(); if(!n) return; if(S.cats.find(c=>c.name===n)){alert('มีหมวดนี้แล้ว');return} const budget=+($('#newBudget').value||0); S.cats.push({name:n,budget}); saveAll(); $('#newCat').value=''; $('#newBudget').value=''; fillCategorySelects(); renderCats(); renderAll(); };
 
-/* ===== transactions ===== */
+/* ---------- transactions ---------- */
 $('#dDate').value=today();
 $('#dIncomeCat').addEventListener('change',()=>$('#newIncomeTag').classList.toggle('hidden',$('#dIncomeCat').value!=='__new__'));
 $('#dExpenseCat').addEventListener('change',()=>$('#newExpenseCat').classList.toggle('hidden',$('#dExpenseCat').value!=='__new__'));
@@ -267,7 +263,7 @@ $('#saveDay').onclick=()=>{
   if(exp>0) add.push({id:uid(),date,type:'expense',amount:exp,category:expCat||'อื่นๆ',note});
   if(!add.length){ alert('กรอกอย่างน้อย 1 ช่อง: รายรับ หรือ รายจ่าย'); return; }
   S.tx.push(...add); saveAll();
-  jumpToMonthOf(date);       /* กระโดดเดือนให้ตรงกับวันที่ที่บันทึก */
+  jumpToMonthOf(date);
   $('#dIncome').value=''; $('#dExpense').value=''; $('#dNote').value='';
   $('#newIncomeTag').value=''; $('#newExpenseCat').value=''; $('#newIncomeTag').classList.add('hidden'); $('#newExpenseCat').classList.add('hidden');
   fillCategorySelects(); renderAll();
@@ -288,7 +284,7 @@ function renderTable(){
 }
 $('#search').oninput=renderTable; $('#filterType').onchange=renderTable; $('#filterCat').onchange=renderTable;
 
-/* ===== goals ===== */
+/* ---------- goals ---------- */
 $('#addGoal').onclick=()=>{ ensureState(); const n=$('#goalName').value.trim(), t=+($('#goalTarget').value||0), d=$('#goalDue').value; if(!n||!t||!d){alert('กรอกให้ครบ');return} S.goals.push({id:uid(),name:n,target:t,saved:0,due:d}); saveAll(); $('#goalName').value=''; $('#goalTarget').value=''; $('#goalDue').value=''; renderGoals(); };
 function daysBetween(a,b){return Math.ceil((b-a)/(1000*60*60*24))}
 function renderGoals(){
@@ -305,7 +301,7 @@ function renderGoals(){
   $$('#goalList [data-del]').forEach(b=>b.onclick=()=>{ const id=b.dataset.del; S.goals=S.goals.filter(x=>x.id!==id); saveAll(); renderGoals(); });
 }
 
-/* ===== KPIs & charts ===== */
+/* ---------- KPIs & charts ---------- */
 function renderKPIs(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const inc=sum(txm.filter(t=>t.type==='income').map(t=>t.amount));
@@ -325,7 +321,7 @@ function renderPie(){
 function renderBars(){
   const svg=$('#bars'); svg.innerHTML=''; const m=mp.value, txm=byMonth(S.tx,m); const [Y,M]=m.split('-').map(Number); const days=new Date(Y,M,0).getDate();
   if(!txm.length){ svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="currentColor" opacity=".5">ไม่มีข้อมูล</text>'; return }
-  const byDay=Array.from({length:days},(_,i)=>({inc:0,exp:0})); txm.forEach(t=>{ const d=+t.date.slice(8,10)-1; if(t.type==='income') byDay[d].inc+=t.amount; else byDay[d].exp+=t.amount; });
+  const byDay=Array.from({length:days},()=>({inc:0,exp:0})); txm.forEach(t=>{ const d=+t.date.slice(8,10)-1; if(t.type==='income') byDay[d].inc+=t.amount; else byDay[d].exp+=t.amount; });
   const w=svg.clientWidth||600,h=240,p=24,bw=(w-p*2)/days,max=Math.max(1,...byDay.map(x=>x.inc+x.exp));
   byDay.forEach((x,i)=>{ const rx=p+i*bw, eh=Math.round((x.exp/max)*(h-p*2)), ih=Math.round((x.inc/max)*(h-p*2));
     const re=document.createElementNS('http://www.w3.org/2000/svg','rect'); re.setAttribute('x',rx); re.setAttribute('y',h-p-eh); re.setAttribute('width',Math.max(1,bw*.8)); re.setAttribute('height',eh); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.7');
@@ -333,7 +329,7 @@ function renderBars(){
   const axis=document.createElementNS('http://www.w3.org/2000/svg','line'); axis.setAttribute('x1',p); axis.setAttribute('x2',w-p); axis.setAttribute('y1',h-p); axis.setAttribute('y2',h-p); axis.setAttribute('stroke','currentColor'); axis.setAttribute('opacity','.3'); svg.appendChild(axis);
 }
 
-/* ===== analysis ===== */
+/* ---------- analysis ---------- */
 function renderAnalysis(){
   const m=mp.value, txm=byMonth(S.tx,m);
   const expenseDays=new Set(txm.filter(t=>t.type==='expense').map(t=>t.date)).size || new Set(txm.map(t=>t.date)).size;
@@ -351,24 +347,24 @@ function renderAnalysis(){
   const w=svg.clientWidth||600,h=240,p=28,bw=(w-p*2)/(months.length*2+months.length*.5),max=Math.max(1,...data.flatMap(x=>[x.inc,x.exp]));
   data.forEach((d,i)=>{ const x=p+i*(bw*2+bw*.5), hi=Math.round((d.inc/max)*(h-p*2)), he=Math.round((d.exp/max)*(h-p*2));
     const ri=document.createElementNS('http://www.w3.org/2000/svg','rect'); ri.setAttribute('x',x); ri.setAttribute('y',h-p-hi); ri.setAttribute('width',bw); ri.setAttribute('height',hi); ri.setAttribute('fill','var(--ok)'); ri.setAttribute('opacity','.75');
-    const re=document.createElementNS('http://www.w3.org/0  svg','rect'); re.setAttribute('x',x+bw+2); re.setAttribute('y',h-p-he); re.setAttribute('width',bw); re.setAttribute('height',he); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.75'); svg.appendChild(ri); svg.appendChild(re); });
+    const re=document.createElementNS('http://www.w3.org/2000/svg','rect'); re.setAttribute('x',x+bw+2); re.setAttribute('y',h-p-he); re.setAttribute('width',bw); re.setAttribute('height',he); re.setAttribute('fill','var(--danger)'); re.setAttribute('opacity','.75'); svg.appendChild(ri); svg.appendChild(re); });
 }
 
-/* ===== export / import ===== */
+/* ---------- export / import ---------- */
 $('#exportJson').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({user:CUR,S})],{type:'application/json'})); a.download=`budgetpro_${CUR}.json`; a.click(); };
 $('#exportCsv').onclick=()=>{ const rows=[['date','type','category','amount','note']].concat(S.tx.map(t=>[t.date,t.type,t.category,t.amount,t.note||''])); const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`transactions_${CUR}.csv`; a.click(); };
 $('#importJson').onclick=()=>{ const f=$('#importFile').files?.[0]; if(!f){alert('เลือกไฟล์');return} const r=new FileReader(); r.onload=()=>{ try{ const o=JSON.parse(r.result); if(o.S){ S=o.S; ensureState(); saveAll(); } else alert('ไฟล์ไม่ถูกต้อง') }catch{ alert('อ่านไฟล์ไม่สำเร็จ') } renderAll(); }; r.readAsText(f); };
 $('#resetAll').onclick=()=>{ if(!confirm('ล้างทั้งหมด?'))return; S={tx:[],cats:normalizeCats(DEFAULT_CAT_NAMES),goals:[],settings:{incomeTags:[]}}; saveAll(); renderAll(); };
 
-/* ===== orchestrator ===== */
+/* ---------- orchestrator ---------- */
 function renderAll(){ if(!CUR) return; ensureState(); fillCategorySelects(); renderKPIs(); renderPie(); renderBars(); renderTable(); renderCats(); renderGoals(); renderAnalysis(); }
 
 window.localLogin = async function(){ try{ await _loginLocal($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
 window.localSignup = async function(){ try{ await _signupLocal($('#authUser').value.trim(), $('#authPass').value); bootUser($('#authUser').value.trim()); $('#auth').remove(); renderAll(); }catch(e){ $('#authMsg').textContent=e.message } };
 
+/* อย่าเปิด modal เอง ปล่อยให้ Firebase ตัดสินใจจาก onAuthStateChanged() */
 (function(){
-  if(!CUR){ $('#auth').classList.remove('hidden'); }
-  else { bootUser(CUR); renderAll(); }
+  if (CUR) { bootUser(CUR); renderAll(); }
   $('#addDemo').onclick=()=>{ ensureState(); const m=mp.value; const [y,mm]=m.split('-').map(Number); const cats=S.cats.map(c=>c.name); function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a}
     for(let i=0;i<20;i++){ const d=new Date(y,mm-1,rnd(1,Math.min(28,new Date(y,mm,0).getDate()))); const inc=rnd(0,1)===1;
       S.tx.push({id:uid(),date:d.toISOString().slice(0,10),type:inc?'income':'expense',amount:inc?rnd(200,2000):rnd(20,500),category:inc?(S.settings.incomeTags[0]||'อื่นๆ'):cats[rnd(0,cats.length-1)],note:inc?'รายได้':'ค่าใช้จ่ายสุ่ม'}); }
@@ -409,6 +405,11 @@ window.localSignup = async function(){ try{ await _signupLocal($('#authUser').va
         settings: { incomeTags: [] }
       };
     }
+    // sanitize
+    window.S.tx       = Array.isArray(window.S.tx) ? window.S.tx : [];
+    window.S.cats     = (Array.isArray(window.S.cats)?window.S.cats:[]).map(c=>({name:String(c.name??c), budget:Number(c.budget||0)}));
+    window.S.goals    = Array.isArray(window.S.goals) ? window.S.goals : [];
+    window.S.settings = Object.assign({incomeTags:[]}, window.S.settings||{});
   }
   function cloudBoot(uid, emailLabel){
     window.CUR  = uid;
@@ -420,29 +421,41 @@ window.localSignup = async function(){ try{ await _signupLocal($('#authUser').va
     if (!auth.currentUser) return;
     ensureState();
     cloudBoot(auth.currentUser.uid, auth.currentUser.email || '@user');
+
     try{
       const snap = await getDoc(userDoc());
-      if (snap.exists()) {
-        const remote = snap.data();
-        if (remote?.S) { window.S = remote.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
+      if (snap.exists() && snap.data()?.S){
+        window.S = snap.data().S;
       } else {
-        await setDoc(userDoc(), { S: window.S });
+        const clean = JSON.parse(JSON.stringify(window.S));
+        await setDoc(userDoc(), { S: clean }, { merge:true });
       }
+
       if (unsubscribe) { unsubscribe(); unsubscribe=null; }
       unsubscribe = onSnapshot(userDoc(), d => {
-        if (!d.exists()) return;
-        const remote = d.data();
-        if (remote?.S) { window.S = remote.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
+        const R = d.data();
+        if(R?.S){ window.S = R.S; window.saveAll && window.saveAll(); window.renderAll && window.renderAll(); }
       });
+
       document.getElementById('auth')?.remove?.();
-    }catch(e){ const m=document.getElementById('authMsg'); if(m) m.textContent=e.message||'เชื่อมต่อคลาวด์ผิดพลาด'; }
+      window.renderAll && window.renderAll();
+
+    }catch(e){
+      const m=document.getElementById('authMsg'); 
+      if(m) m.textContent = e.message || 'เชื่อมต่อคลาวด์ผิดพลาด';
+      console.error(e);
+    }
   }
 
   const _saveAllOrig = window.saveAll;
   window.saveAll = function(){
     try{
       _saveAllOrig && _saveAllOrig();
-      if (auth.currentUser) { ensureState(); setDoc(userDoc(), { S: window.S }, { merge: true }).catch(()=>{}); }
+      if (auth.currentUser) {
+        ensureState();
+        const clean = JSON.parse(JSON.stringify(window.S));
+        setDoc(userDoc(), { S: clean }, { merge: true }).catch(e=>console.warn('sync error',e));
+      }
     }catch(e){}
   };
 
@@ -476,7 +489,7 @@ window.localSignup = async function(){ try{ await _signupLocal($('#authUser').va
   logoutBtn?.addEventListener('click', async () => {
     if (unsubscribe) { unsubscribe(); unsubscribe=null; }
     if (auth.currentUser) await signOut(auth);
-    const modal = document.getElementById('auth'); modal?.classList?.remove('hidden');
+    document.getElementById('auth')?.classList?.remove('hidden');
   });
 
   onAuthStateChanged(auth, async (user) => {
@@ -484,7 +497,7 @@ window.localSignup = async function(){ try{ await _signupLocal($('#authUser').va
     if (user) await cloudLoadAndSubscribe();
     else if (!window.session || !window.session()) document.getElementById('auth')?.classList.remove('hidden');
   });
-  setTimeout(()=>{ if(!authReady && (!window.session || !window.session())) document.getElementById('auth')?.classList.remove('hidden'); }, 600);
+  setTimeout(()=>{ if(!authReady && (!window.session || !window.session())) document.getElementById('auth')?.classList.remove('hidden'); }, 700);
 </script>
 </body>
 </html>
